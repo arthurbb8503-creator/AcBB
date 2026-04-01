@@ -4,7 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Dashboard de Performance — Carteiras RN</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js">
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script>
 function formatDateTime(d){
   const pad = n => String(n).padStart(2,'0');
   return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -27,9 +28,6 @@ function renderLastUpdate(){
   const d = new Date(iso);
   el.textContent = 'Última atualização: ' + formatDateTime(d);
 }
-
-renderLastUpdate();
-
 </script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -320,6 +318,101 @@ body {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
+.alerts-grid {
+  display: grid;
+  grid-template-columns: 1.25fr .75fr;
+  gap: 14px;
+  margin: 14px 0 18px;
+}
+.alert-card {
+  border-radius: var(--radius);
+  padding: 18px 18px;
+  background: rgba(255,255,255,.86);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(219,228,240,.95);
+  box-shadow: var(--shadow-sm);
+}
+.alert-card h3 {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.alert-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.alert-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-top: 5px;
+  flex-shrink: 0;
+  background: var(--warning);
+}
+.alert-dot.critical { background: var(--danger); }
+.alert-dot.good { background: var(--success); }
+.quick-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.quick-box {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(180deg, #fff 0%, #f8fbff 100%);
+}
+.quick-k {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.quick-v {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text);
+}
+.kpi-mobi-score {
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -.04em;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.kpi-mobi-pos {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+.seg-exclusivo { background:#eef2ff; color:#4338ca; }
+.seg-rn { background:#ecfeff; color:#0f766e; }
+@media (max-width: 1080px) {
+  .alerts-grid { grid-template-columns: 1fr; }
+}
+
 
 .kpi {
   border-radius: 20px;
@@ -609,80 +702,6 @@ body {
   color:var(--muted);
 }
 
-
-.alerts-wrap{
-  margin: 18px 0 22px;
-  display:grid;
-  grid-template-columns: 1.2fr .8fr;
-  gap:14px;
-}
-.alert-panel{
-  background: var(--surface, #fff);
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: 16px;
-  padding: 18px 18px;
-  box-shadow: 0 4px 14px rgba(15,23,42,.05);
-}
-.alert-title{
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: var(--muted, #64748b);
-  margin-bottom: 10px;
-}
-.alert-list{
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-}
-.alert-item{
-  display:flex;
-  align-items:flex-start;
-  gap:10px;
-  font-size:13px;
-  color: var(--text, #1e293b);
-  line-height:1.4;
-}
-.alert-dot{
-  width:8px;
-  height:8px;
-  border-radius:999px;
-  margin-top:5px;
-  flex-shrink:0;
-  background:#f59e0b;
-}
-.alert-dot.critical{ background:#dc2626; }
-.alert-dot.good{ background:#16a34a; }
-.quick-grid{
-  display:grid;
-  grid-template-columns: 1fr 1fr;
-  gap:12px;
-}
-.quick-box{
-  border:1px solid var(--border, #e2e8f0);
-  border-radius:14px;
-  padding:14px;
-  background:#fff;
-}
-.quick-k{
-  font-size:10px;
-  font-weight:800;
-  text-transform:uppercase;
-  letter-spacing:.08em;
-  color: var(--muted, #64748b);
-  margin-bottom:6px;
-}
-.quick-v{
-  font-size:14px;
-  font-weight:700;
-  color: var(--text, #1e293b);
-  line-height:1.3;
-}
-@media (max-width: 980px){
-  .alerts-wrap{grid-template-columns:1fr}
-}
-
 </style>
 </head>
 <body>
@@ -737,19 +756,18 @@ body {
       <section id="dashboard" style="display:none">
         <div class="kpi-row" id="kpi-row"></div>
 
-    <div class="alerts-wrap" id="alerts-wrap">
-      <section class="alert-panel">
-        <div class="alert-title">Alertas da carteira</div>
-        <div class="alert-list" id="alert-list"></div>
-      </section>
-      <section class="alert-panel">
-        <div class="alert-title">Leitura rápida</div>
-        <div class="quick-grid" id="quick-grid"></div>
-      </section>
-    </div>
+        <div class="alerts-grid">
+          <section class="alert-card">
+            <h3>Alertas da carteira</h3>
+            <div class="alert-list" id="alert-list"></div>
+          </section>
+          <section class="alert-card">
+            <h3>Leitura rápida</h3>
+            <div class="quick-grid" id="quick-grid"></div>
+          </section>
+        </div>
 
-
-        <div class="insights" id="insights-row"></div>
+        <div class="insights" id="insights-row" style="display:none"></div>
 
         <div class="section-top" style="margin-top: 8px;">
           <div class="section-lbl">Indicadores por Produto</div>
@@ -797,17 +815,56 @@ function populatePrefixoSelect(selectedPrefix = '') {
   });
 }
 
-function segInfo(carteira) {
-  const c = Number(carteira), s = String(carteira);
-  if (c === 0) return { key:'agencia', label:'Carteiras por agências', pill:'seg-agencia', total:68 };
-  if (c === 7002) return { key:'7002', label:'Grupo Negocial', pill:'seg-7002', total:68 };
-  if (s.startsWith('5')) return { key:'5xxx', label:'PJ', pill:'seg-5xxx', total:35 };
-  return { key:'3digits', label:'Personalizado', pill:'seg-3digits', total:37 };
+function normalizeGroupLabel(label) {
+  const v = String(label || '').trim();
+  if (!v) return 'Não classificado';
+  return v;
+}
+
+function groupKey(label) {
+  const v = normalizeGroupLabel(label).toLowerCase();
+  if (v === 'agência' || v === 'agencia') return 'agencia';
+  if (v === 'grupo negocial') return '7002';
+  if (v === 'personalizado') return '3digits';
+  if (v === 'pequena empresa') return 'pequena';
+  if (v === 'micro empresa') return 'micro';
+  if (v === 'exclusivo') return 'exclusivo';
+  if (v === 'rn') return 'rn';
+  if (v === 'super') return 'super';
+  return 'outros';
+}
+
+function groupPillClass(label) {
+  const key = groupKey(label);
+  const map = {
+    agencia: 'seg-agencia',
+    '7002': 'seg-7002',
+    '3digits': 'seg-3digits',
+    pequena: 'seg-5xxx',
+    micro: 'seg-5xxx',
+    exclusivo: 'seg-exclusivo',
+    rn: 'seg-rn',
+    super: 'seg-7002',
+    outros: 'seg-3digits'
+  };
+  return map[key] || 'seg-3digits';
+}
+
+function segInfo(rec) {
+  const label = normalizeGroupLabel(rec.groupLabel || rec.uf);
+  const key = groupKey(label);
+  const total = Number(rec.groupTotal || 0);
+  return {
+    key,
+    label,
+    pill: groupPillClass(label),
+    total
+  };
 }
 
 function cartLabel(r) {
-  const si = segInfo(r.carteira);
-  if (Number(r.carteira) === 0) return 'Agência';
+  const si = segInfo(r);
+  if (Number(r.carteira) === 0) return si.label;
   return 'Carteira ' + r.carteira + ' · ' + si.label;
 }
 
@@ -884,9 +941,9 @@ function updateUploadVisibility() {
 }
 
 function parseWorkbookToDB(workbook) {
-  const sheet = workbook.Sheets['Planilha3'] || workbook.Sheets[workbook.SheetNames[0]];
+  const sheet = workbook.Sheets['Dados'] || workbook.Sheets['dados'] || workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) {
-    throw new Error('Não encontrei a aba Planilha3 no arquivo.');
+    throw new Error('Não encontrei a aba Dados no arquivo.');
   }
 
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
@@ -906,37 +963,57 @@ function parseWorkbookToDB(workbook) {
 
   const parsedRows = [];
   const prefixoMeta = {};
+  const groupTotals = {};
 
   dataRows.forEach(row => {
     const prefixo = row[1];
     const dep = row[2];
-    const uf = row[3];
+    const groupLabel = normalizeGroupLabel(row[3]);
     const carteira = row[4];
 
     if (prefixo == null || dep == null || carteira == null || String(prefixo).trim() === '') return;
 
     const products = {};
+    let hasAnyProduct = false;
+
     pairs.forEach(pair => {
       const pct = row[pair.pctIdx];
       const pos = row[pair.posIdx];
-
       if (pct == null && pos == null) return;
+
       products[pair.name] = {
         pct: Number(pct ?? 0),
         pos: String(pos ?? '')
       };
+      hasAnyProduct = true;
     });
+
+    const mobilizacaoScore = row[21];
+    const mobilizacaoPos = row[22];
+    const hasMobilizacao = mobilizacaoScore != null || mobilizacaoPos != null;
+
+    if (!hasAnyProduct && !hasMobilizacao) return;
 
     const record = {
       prefixo: String(prefixo).trim(),
       carteira: Number(carteira),
       dep: String(dep).trim(),
-      uf: String(uf ?? '').trim() || 'RN',
-      products
+      uf: 'RN',
+      groupLabel,
+      products,
+      mobilizacao: {
+        score: mobilizacaoScore == null ? null : Number(mobilizacaoScore),
+        pos: mobilizacaoPos == null ? '' : String(mobilizacaoPos)
+      }
     };
 
     parsedRows.push(record);
     prefixoMeta[record.prefixo] = record.dep;
+    groupTotals[groupLabel] = (groupTotals[groupLabel] || 0) + 1;
+  });
+
+  parsedRows.forEach(r => {
+    r.groupTotal = groupTotals[r.groupLabel] || 0;
   });
 
   const prefixoList = Array.from(new Set(parsedRows.map(r => r.prefixo)))
@@ -967,7 +1044,7 @@ function handleExcelUpload(event) {
       rebuildIndex();
       populatePrefixoSelect(currentPrefix);
 
-      uploadStatus.textContent = 'Base atualizada com sucesso a partir do Excel.';
+      uploadStatus.textContent = 'Base atualizada com sucesso a partir da aba Dados.';
       updateUploadVisibility();
 
       if (currentPrefix && byP[currentPrefix]) {
@@ -982,7 +1059,7 @@ function handleExcelUpload(event) {
       }
     } catch (err) {
       console.error(err);
-      uploadStatus.textContent = 'Não foi possível ler o Excel. Verifique se o arquivo está no mesmo formato da base original.';
+      uploadStatus.textContent = 'Não foi possível ler o Excel. Verifique se a aba Dados segue o formato esperado.';
     } finally {
       event.target.value = '';
     }
@@ -1043,52 +1120,48 @@ function changeCarteira() {
   render(rec);
 }
 
-
-function buildAlerts(rec, prods){
+function buildAlerts(rec, prods) {
   const alerts = [];
   const critical = prods.filter(([,v]) => Number(v.pct) < 60);
-  const below75 = prods.filter(([,v]) => Number(v.pct) >= 60 && Number(v.pct) < 75);
+  const caution = prods.filter(([,v]) => Number(v.pct) >= 60 && Number(v.pct) < 75);
   const meta = prods.filter(([,v]) => Number(v.pct) >= 100);
-  const seguridade = prods.filter(([n]) => /seg/i.test(n));
+  const seguridade = prods.filter(([name]) => /seg/i.test(name));
   const seguridadeFraca = seguridade.filter(([,v]) => Number(v.pct) < 75);
 
-  if (critical.length) {
-    alerts.push({type:'critical', text:`${critical.length} produto(s) em nível crítico abaixo de 60%.`});
-  }
-  if (below75.length) {
-    alerts.push({type:'warn', text:`${below75.length} produto(s) em faixa de atenção entre 60% e 74,9%.`});
-  }
-  if (seguridade.length && seguridadeFraca.length >= Math.ceil(seguridade.length / 2)) {
-    alerts.push({type:'critical', text:'Concentração de atenção em produtos de seguridade.'});
-  }
-  if (meta.length >= Math.max(2, Math.ceil(prods.length / 3))) {
-    alerts.push({type:'good', text:`${meta.length} produto(s) já performando em meta ou acima dela.`});
-  }
-  if (!alerts.length) {
-    alerts.push({type:'good', text:'Carteira sem alertas críticos no momento.'});
-  }
+  if (critical.length) alerts.push({ type:'critical', text:`${critical.length} produto(s) em nível crítico abaixo de 60%.` });
+  if (caution.length) alerts.push({ type:'warn', text:`${caution.length} produto(s) em faixa de atenção entre 60% e 74,9%.` });
+  if (seguridade.length && seguridadeFraca.length >= Math.ceil(seguridade.length / 2)) alerts.push({ type:'critical', text:'Concentração de atenção em produtos de seguridade.' });
+  if (meta.length >= Math.max(2, Math.ceil(prods.length / 3))) alerts.push({ type:'good', text:`${meta.length} produto(s) performando em meta ou acima dela.` });
+  if (!alerts.length) alerts.push({ type:'good', text:'Carteira sem alertas críticos no momento.' });
+
   return alerts.slice(0, 4);
 }
 
-function buildQuickRead(rec, prods){
-  const best = prods.reduce((a,b)=>b[1].pct>a[1].pct?b:a);
-  const worst = prods.reduce((a,b)=>b[1].pct<a[1].pct?b:a);
-  const meta = prods.filter(([,v]) => v.pct >= 100).length;
+function buildQuickRead(rec, prods) {
+  const best = prods.length ? prods.reduce((a,b) => Number(b[1].pct) > Number(a[1].pct) ? b : a) : ['—', {pct:0}];
+  const worst = prods.length ? prods.reduce((a,b) => Number(b[1].pct) < Number(a[1].pct) ? b : a) : ['—', {pct:0}];
+  const meta = prods.filter(([,v]) => Number(v.pct) >= 100).length;
   return [
-    {k:'Maior força', v: best[0]},
-    {k:'Maior atenção', v: worst[0]},
-    {k:'Na meta', v: `${meta} de ${prods.length} produtos`},
-    {k:'Grupamento', v: segInfo(rec.carteira).label}
+    { k:'Maior força', v: best[0] },
+    { k:'Maior atenção', v: worst[0] },
+    { k:'Na meta', v: `${meta} de ${prods.length} produtos` },
+    { k:'Grupamento', v: segInfo(rec).label }
   ];
 }
 
+function formatMobilizacaoScore(v) {
+  if (v == null || Number.isNaN(Number(v))) return '—';
+  return Number(v).toFixed(2);
+}
+
 function render(rec) {
-  const si = segInfo(rec.carteira);
-  const prods = Object.entries(rec.products);
-  const avg = prods.reduce((s,[,v]) => s + Number(v.pct || 0), 0) / prods.length;
+  const si = segInfo(rec);
+  const prods = Object.entries(rec.products || {});
+  const avg = prods.length ? prods.reduce((s,[,v]) => s + Number(v.pct || 0), 0) / prods.length : 0;
   const hitting = prods.filter(([,v]) => Number(v.pct) >= 100).length;
-  const best = prods.reduce((a,b) => Number(b[1].pct) > Number(a[1].pct) ? b : a);
-  const worst = prods.reduce((a,b) => Number(b[1].pct) < Number(a[1].pct) ? b : a);
+  const criticalCount = prods.filter(([,v]) => Number(v.pct) < 60).length;
+  const mobiPos = parsePos(rec.mobilizacao?.pos || '');
+  const mobiPosTxt = rec.mobilizacao?.pos ? rec.mobilizacao.pos : '—';
 
   document.getElementById('dep-block').style.display = 'flex';
   document.getElementById('dep-name').innerHTML =
@@ -1096,14 +1169,18 @@ function render(rec) {
 
   document.getElementById('dep-meta').textContent =
     'Prefixo ' + rec.prefixo + ' · ' +
-    (Number(rec.carteira) === 0 ? 'Agência' : 'Carteira ' + rec.carteira) +
-    ' · ' + rec.uf +
-    ' · Ranking dentro de ' + si.total + ' carteiras equivalentes';
+    (Number(rec.carteira) === 0 ? si.label : 'Carteira ' + rec.carteira) +
+    ' · grupamento com ' + si.total + ' registro(s)';
 
   document.getElementById('empty-state').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
 
   document.getElementById('kpi-row').innerHTML = `
+    <div class="kpi">
+      <div class="kl">Mobilização</div>
+      <div class="kpi-mobi-score">${formatMobilizacaoScore(rec.mobilizacao?.score)}</div>
+      <div class="kpi-mobi-pos">${mobiPosTxt}</div>
+    </div>
     <div class="kpi">
       <div class="kl">Média Geral</div>
       <div class="kv ${kvClass(avg)}">${avg.toFixed(1)}%</div>
@@ -1111,45 +1188,31 @@ function render(rec) {
     </div>
     <div class="kpi">
       <div class="kl">Na Meta</div>
-      <div class="kv ${hitting === prods.length ? 'kv-green' : hitting > 0 ? 'kv-amber' : 'kv-red'}">${hitting} / ${prods.length}</div>
+      <div class="kv ${hitting === prods.length && prods.length ? 'kv-green' : hitting > 0 ? 'kv-amber' : 'kv-red'}">${hitting} / ${prods.length}</div>
       <div class="ks">produtos com ≥ 100%</div>
     </div>
     <div class="kpi">
-      <div class="kl">Melhor Produto</div>
-      <div class="kv kv-green">${Number(best[1].pct).toFixed(1)}%</div>
-      <div class="ks">${best[0]}</div>
-    </div>
-    <div class="kpi">
-      <div class="kl">Produto Crítico</div>
-      <div class="kv kv-red">${Number(worst[1].pct).toFixed(1)}%</div>
-      <div class="ks">${worst[0]}</div>
+      <div class="kl">Produtos Críticos</div>
+      <div class="kv ${criticalCount ? 'kv-red' : 'kv-green'}">${criticalCount}</div>
+      <div class="ks">produtos abaixo de 60%</div>
     </div>
   `;
 
-  const avgPos = Math.round(prods.reduce((sum, [,v]) => sum + parsePos(v.pos).cur, 0) / prods.length);
-  const top3 = prods
-    .slice()
-    .sort((a,b) => Number(b[1].pct) - Number(a[1].pct))
-    .slice(0,3)
-    .map(([name, v]) => name + ' (' + Number(v.pct).toFixed(1) + '%)')
-    .join(' · ');
+  const alerts = buildAlerts(rec, prods);
+  document.getElementById('alert-list').innerHTML = alerts.map(a => `
+    <div class="alert-item">
+      <span class="alert-dot ${a.type === 'warn' ? '' : a.type}"></span>
+      <span>${a.text}</span>
+    </div>
+  `).join('');
 
-  const below75 = prods.filter(([,v]) => Number(v.pct) < 75).length;
-
-  document.getElementById('insights-row').innerHTML = `
-    <div class="insight-card">
-      <div class="insight-title">Leitura rápida</div>
-      <div class="insight-text">Posição média aproximada: <span class="${avgPos <= Math.ceil(si.total/3) ? 'kv-green' : avgPos <= Math.ceil(si.total*2/3) ? 'kv-amber' : 'kv-red'}">${avgPos}º</span> no grupo.</div>
+  const quickRead = buildQuickRead(rec, prods);
+  document.getElementById('quick-grid').innerHTML = quickRead.map(item => `
+    <div class="quick-box">
+      <div class="quick-k">${item.k}</div>
+      <div class="quick-v">${item.v}</div>
     </div>
-    <div class="insight-card">
-      <div class="insight-title">Destaques</div>
-      <div class="insight-text">${top3}</div>
-    </div>
-    <div class="insight-card">
-      <div class="insight-title">Atenção</div>
-      <div class="insight-text">${below75} produto(s) abaixo de 75% <span class="muted">· foco em recuperação rápida</span></div>
-    </div>
-  `;
+  `).join('');
 
   document.getElementById('cards-grid').innerHTML = prods.map(([name, info]) => {
     const v = Number(info.pct);
@@ -1157,7 +1220,7 @@ function render(rec) {
     const [sbClass, sbLabel] = statusBadge(v);
     const clr = barColor(v);
     const bw = barW(v);
-    const rbClass = rankBubbleClass(pos.cur, pos.total);
+    const rbClass = rankBubbleClass(pos.cur || 0, pos.total || 1);
     const rankGoodPct = pos.total ? Math.max(0, Math.min(100, Math.round(((pos.total - pos.cur) / pos.total) * 100))) : 0;
 
     return `
@@ -1174,10 +1237,10 @@ function render(rec) {
         </div>
 
         <div class="rank-section">
-          <div class="rank-bubble ${rbClass}">${pos.cur}º</div>
+          <div class="rank-bubble ${rbClass}">${pos.cur || '—'}</div>
           <div>
-            <div class="rank-pos-txt">${pos.cur}º de ${pos.total}</div>
-            <div class="rank-sub-txt">grupo equivalente com ${pos.total} carteiras</div>
+            <div class="rank-pos-txt">${info.pos || '—'}</div>
+            <div class="rank-sub-txt">grupo equivalente com ${pos.total || si.total || 0} carteiras</div>
             <div class="rank-bar-wrap">
               <div class="rank-bar-bg"></div>
               <div class="rank-bar-fill" style="width:${rankGoodPct}%; background:${clr};"></div>
@@ -1189,6 +1252,10 @@ function render(rec) {
     `;
   }).join('');
 }
+
+renderLastUpdate();
 </script>
+</body>
+</html>
 </body>
 </html>
