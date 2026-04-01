@@ -702,6 +702,152 @@ body {
   color:var(--muted);
 }
 
+
+.leadership-wrap{
+  display:none;
+  margin: 18px 0 20px;
+  gap: 14px;
+}
+.leadership-wrap.is-visible{
+  display:grid;
+  grid-template-columns: 1.1fr .9fr;
+}
+.lead-card{
+  border-radius: var(--radius);
+  padding: 18px;
+  background: rgba(255,255,255,.9);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+.lead-title{
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.rank-columns{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.mini-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.mini-item{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:center;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:#fff;
+}
+.mini-name{
+  font-size:13px;
+  font-weight:700;
+  color:var(--text);
+}
+.mini-sub{
+  font-size:11px;
+  color:var(--muted);
+  margin-top:2px;
+}
+.mini-val{
+  text-align:right;
+  flex-shrink:0;
+}
+.mini-score{
+  font-size:13px;
+  font-weight:800;
+  color:var(--accent);
+}
+.mini-pos{
+  font-size:11px;
+  color:var(--muted);
+}
+.product-summary{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:10px;
+}
+.summary-box{
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:12px;
+  background:#fff;
+}
+.summary-box h4{
+  font-size:10px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+.summary-line{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  font-size:12px;
+  padding:4px 0;
+  color:var(--text);
+}
+.summary-line strong{font-weight:800}
+.product-click-hint{
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pcard{ cursor:pointer; }
+.pcard.active{
+  border-color: rgba(33,86,216,.35);
+  box-shadow: 0 0 0 2px rgba(33,86,216,.08), var(--shadow-sm);
+}
+.drilldown-wrap{
+  display:none;
+  margin-top:18px;
+}
+.drilldown-wrap.is-visible{
+  display:block;
+}
+.drill-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:10px;
+}
+.drill-title{
+  font-size:16px;
+  font-weight:800;
+  color:var(--text);
+}
+.drill-sub{
+  font-size:12px;
+  color:var(--muted);
+  margin-top:4px;
+}
+.drill-empty{
+  font-size:13px;
+  color:var(--muted);
+  padding:18px;
+  border:1px dashed var(--border);
+  border-radius:14px;
+  background:#fff;
+}
+@media (max-width: 1080px){
+  .leadership-wrap.is-visible,
+  .rank-columns,
+  .product-summary{
+    grid-template-columns:1fr;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -775,6 +921,46 @@ body {
         </div>
 
         <div class="cards-grid" id="cards-grid"></div>
+        <div class="product-click-hint" id="product-click-hint" style="display:none">Clique em um produto para detalhar as carteiras deste prefixo.</div>
+        <section class="leadership-wrap" id="leadership-wrap">
+          <div class="lead-card">
+            <div class="lead-title">Carteiras em destaque</div>
+            <div class="rank-columns">
+              <div>
+                <div class="lead-title" style="margin-bottom:8px">Top 5</div>
+                <div class="mini-list" id="leader-top-list"></div>
+              </div>
+              <div>
+                <div class="lead-title" style="margin-bottom:8px">Bottom 5</div>
+                <div class="mini-list" id="leader-bottom-list"></div>
+              </div>
+            </div>
+          </div>
+          <div class="lead-card">
+            <div class="lead-title">Leitura consolidada</div>
+            <div class="product-summary" id="leader-summary"></div>
+          </div>
+        </section>
+
+        <section class="drilldown-wrap" id="drilldown-wrap">
+          <div class="drill-head">
+            <div>
+              <div class="drill-title" id="drill-title">Detalhamento</div>
+              <div class="drill-sub" id="drill-sub"></div>
+            </div>
+          </div>
+          <div class="rank-columns">
+            <div class="lead-card">
+              <div class="lead-title">Top 5</div>
+              <div class="mini-list" id="drill-top-list"></div>
+            </div>
+            <div class="lead-card">
+              <div class="lead-title">Bottom 5</div>
+              <div class="mini-list" id="drill-bottom-list"></div>
+            </div>
+          </div>
+          <div class="drill-empty" id="drill-empty" style="display:none"></div>
+        </section>
       </section>
 
       <section class="upload-panel" id="upload-panel">
@@ -963,6 +1149,7 @@ function parseWorkbookToDB(workbook) {
 
   const parsedRows = [];
   const prefixoMeta = {};
+  const groupTotals = {};
 
   dataRows.forEach(row => {
     const prefixo = row[1];
@@ -973,44 +1160,78 @@ function parseWorkbookToDB(workbook) {
     if (prefixo == null || dep == null || carteira == null || String(prefixo).trim() === '') return;
 
     const products = {};
-    let groupTotal = 0;
+    let hasAnyProduct = false;
 
     pairs.forEach(pair => {
       const pct = row[pair.pctIdx];
       const pos = row[pair.posIdx];
       if (pct == null && pos == null) return;
-
-      const posTxt = pos == null ? '' : String(pos);
       products[pair.name] = {
         pct: Number(pct ?? 0),
-        pos: posTxt
+        pos: String(pos ?? '')
       };
-
-      const posMeta = parsePos(posTxt);
-      if (posMeta.total) groupTotal = Math.max(groupTotal, posMeta.total);
+      hasAnyProduct = true;
     });
 
     const mobilizacaoScore = row[21];
     const mobilizacaoPos = row[22];
-    const mobilizacaoPosTxt = mobilizacaoPos == null ? '' : String(mobilizacaoPos);
-    const mobiMeta = parsePos(mobilizacaoPosTxt);
-    if (mobiMeta.total) groupTotal = Math.max(groupTotal, mobiMeta.total);
+    const hasMobilizacao = mobilizacaoScore != null || mobilizacaoPos != null;
 
-    parsedRows.push({
+    if (!hasAnyProduct && !hasMobilizacao) return;
+
+    const record = {
       prefixo: String(prefixo).trim(),
       carteira: Number(carteira),
       dep: String(dep).trim(),
-      uf: groupLabel,
+      uf: 'RN',
       groupLabel,
-      groupTotal,
       products,
       mobilizacao: {
         score: mobilizacaoScore == null ? null : Number(mobilizacaoScore),
-        pos: mobilizacaoPosTxt
+        pos: mobilizacaoPos == null ? '' : String(mobilizacaoPos)
+      }
+    };
+
+    parsedRows.push(record);
+    prefixoMeta[record.prefixo] = record.dep;
+    groupTotals[groupLabel] = (groupTotals[groupLabel] || 0) + 1;
+  });
+
+  // synthetic leadership rows for exclusive prefixes when there is no carteira 0
+  ['8241','9152','9153'].forEach(prefix => {
+    const children = parsedRows.filter(r => String(r.prefixo) === prefix && Number(r.carteira) !== 0);
+    const hasAgencyRow = parsedRows.some(r => String(r.prefixo) === prefix && Number(r.carteira) === 0);
+    if (!children.length || hasAgencyRow) return;
+
+    const first = children[0];
+    const avgMobi = avg(children.map(c => c.mobilizacao?.score));
+    const productNames = Array.from(new Set(children.flatMap(c => Object.keys(c.products || {}))));
+    const aggProducts = {};
+    productNames.forEach(name => {
+      const score = avg(children.map(c => c.products?.[name]?.pct));
+      if (score != null) {
+        aggProducts[name] = { pct: score, pos: '' };
       }
     });
 
-    prefixoMeta[String(prefixo).trim()] = String(dep).trim();
+    parsedRows.push({
+      prefixo: prefix,
+      carteira: 0,
+      dep: first.dep,
+      uf: 'RN',
+      groupLabel: normalizeGroupLabel(first.groupLabel),
+      products: aggProducts,
+      mobilizacao: {
+        score: avgMobi,
+        pos: ''
+      },
+      synthetic: true
+    });
+    prefixoMeta[prefix] = first.dep;
+  });
+
+  parsedRows.forEach(r => {
+    r.groupTotal = groupTotals[r.groupLabel] || 0;
   });
 
   const prefixoList = Array.from(new Set(parsedRows.map(r => r.prefixo)))
@@ -1022,7 +1243,6 @@ function parseWorkbookToDB(workbook) {
     prefixo_meta: prefixoMeta
   };
 }
-
 
 function handleExcelUpload(event) {
   const file = event.target.files && event.target.files[0];
@@ -1097,13 +1317,22 @@ function changePrefixo() {
     return;
   }
 
-  const recs = (byP[p] || []).slice().sort((a,b) => Number(a.carteira) - Number(b.carteira));
+  const recs = (byP[p] || []).slice().sort((a,b) => {
+    if (Number(a.carteira) === 0) return -1;
+    if (Number(b.carteira) === 0) return 1;
+    return Number(a.carteira) - Number(b.carteira);
+  });
+
   recs.forEach(r => {
     const o = document.createElement('option');
     o.value = r.carteira;
     o.textContent = cartLabel(r);
     selC.appendChild(o);
   });
+
+  if (isLeadershipPrefix(p) && recs.some(r => Number(r.carteira) === 0)) {
+    selC.value = '0';
+  }
 
   selC.disabled = false;
   changeCarteira();
@@ -1116,6 +1345,177 @@ function changeCarteira() {
   const rec = (byP[p] || []).find(r => String(r.carteira) === String(cv));
   if (!rec) return;
   render(rec);
+}
+
+
+const LEADERSHIP_PREFIXES = ['8436','8241','9152','9153'];
+let activeProductName = '';
+
+function isLeadershipPrefix(prefix) {
+  return LEADERSHIP_PREFIXES.includes(String(prefix));
+}
+
+function avg(arr){
+  const vals = arr.filter(v => Number.isFinite(Number(v))).map(Number);
+  if (!vals.length) return null;
+  return vals.reduce((a,b)=>a+b,0) / vals.length;
+}
+
+function getPrefixChildren(rec) {
+  if (String(rec.prefixo) === '8436') {
+    return DB.rows.filter(r =>
+      String(r.prefixo) !== '8436' &&
+      Number(r.carteira) === 0 &&
+      groupKey(r.groupLabel) === 'agencia'
+    );
+  }
+  return DB.rows.filter(r => String(r.prefixo) === String(rec.prefixo) && Number(r.carteira) !== 0);
+}
+
+function buildLeadershipSummary(children) {
+  const entries = children.filter(c => c.products && Object.keys(c.products).length);
+  if (!entries.length) {
+    return [
+      { title:'Produtos', rows:[['Status','Aguardando detalhamento por produto na planilha']] },
+      { title:'Mobilização', rows:[['Cobertura', `${children.length} carteira(s) no consolidado`]] }
+    ];
+  }
+  const productNames = Array.from(new Set(entries.flatMap(c => Object.keys(c.products))));
+  const scores = productNames.map(name => {
+    const score = avg(entries.map(c => c.products?.[name]?.pct));
+    return { name, score: score == null ? -Infinity : score };
+  }).filter(x => Number.isFinite(x.score));
+
+  const sorted = scores.slice().sort((a,b) => b.score - a.score);
+  return [
+    {
+      title:'Produtos mais fortes',
+      rows: sorted.slice(0,3).map(x => [x.name, `${x.score.toFixed(1)}%`])
+    },
+    {
+      title:'Produtos em maior atenção',
+      rows: sorted.slice(-3).reverse().map(x => [x.name, `${x.score.toFixed(1)}%`])
+    }
+  ];
+}
+
+function miniItemHTML(name, sub, score, pos) {
+  return `
+    <div class="mini-item">
+      <div>
+        <div class="mini-name">${name}</div>
+        <div class="mini-sub">${sub}</div>
+      </div>
+      <div class="mini-val">
+        <div class="mini-score">${score}</div>
+        <div class="mini-pos">${pos}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderLeadership(rec) {
+  const wrap = document.getElementById('leadership-wrap');
+  const topList = document.getElementById('leader-top-list');
+  const bottomList = document.getElementById('leader-bottom-list');
+  const summary = document.getElementById('leader-summary');
+
+  if (!isLeadershipPrefix(rec.prefixo)) {
+    wrap.classList.remove('is-visible');
+    topList.innerHTML = '';
+    bottomList.innerHTML = '';
+    summary.innerHTML = '';
+    return;
+  }
+
+  const children = getPrefixChildren(rec);
+  const ranked = children
+    .filter(c => c.mobilizacao && Number.isFinite(Number(c.mobilizacao.score)))
+    .slice()
+    .sort((a,b) => Number(b.mobilizacao.score) - Number(a.mobilizacao.score));
+
+  topList.innerHTML = ranked.slice(0,5).map(c =>
+    miniItemHTML(
+      Number(c.carteira) === 0 ? c.dep : `Carteira ${c.carteira}`,
+      c.dep,
+      formatMobilizacaoScore(c.mobilizacao?.score),
+      c.mobilizacao?.pos || '—'
+    )
+  ).join('');
+
+  bottomList.innerHTML = ranked.slice(-5).reverse().map(c =>
+    miniItemHTML(
+      Number(c.carteira) === 0 ? c.dep : `Carteira ${c.carteira}`,
+      c.dep,
+      formatMobilizacaoScore(c.mobilizacao?.score),
+      c.mobilizacao?.pos || '—'
+    )
+  ).join('');
+
+  const blocks = buildLeadershipSummary(children);
+  summary.innerHTML = blocks.map(block => `
+    <div class="summary-box">
+      <h4>${block.title}</h4>
+      ${block.rows.map(r => `<div class="summary-line"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join('')}
+    </div>
+  `).join('');
+
+  wrap.classList.add('is-visible');
+}
+
+function renderProductDrilldown(rec, productName) {
+  const wrap = document.getElementById('drilldown-wrap');
+  const empty = document.getElementById('drill-empty');
+  const topList = document.getElementById('drill-top-list');
+  const bottomList = document.getElementById('drill-bottom-list');
+  const title = document.getElementById('drill-title');
+  const sub = document.getElementById('drill-sub');
+
+  if (!productName) {
+    wrap.classList.remove('is-visible');
+    topList.innerHTML = '';
+    bottomList.innerHTML = '';
+    empty.style.display = 'none';
+    empty.textContent = '';
+    return;
+  }
+
+  const children = getPrefixChildren(rec);
+  const eligible = children
+    .filter(c => c.products && c.products[productName] && Number.isFinite(Number(c.products[productName].pct)))
+    .slice()
+    .sort((a,b) => Number(b.products[productName].pct) - Number(a.products[productName].pct));
+
+  title.textContent = productName;
+  sub.textContent = `Detalhamento das carteiras do prefixo ${rec.prefixo}.`;
+
+  if (!eligible.length) {
+    topList.innerHTML = '';
+    bottomList.innerHTML = '';
+    empty.style.display = 'block';
+    empty.textContent = 'Ainda não há detalhamento por produto nas carteiras deste prefixo na base atual.';
+    wrap.classList.add('is-visible');
+    return;
+  }
+
+  empty.style.display = 'none';
+  topList.innerHTML = eligible.slice(0,5).map(c =>
+    miniItemHTML(
+      Number(c.carteira) === 0 ? c.dep : `Carteira ${c.carteira}`,
+      c.dep,
+      `${Number(c.products[productName].pct).toFixed(1)}%`,
+      c.products[productName].pos || '—'
+    )
+  ).join('');
+  bottomList.innerHTML = eligible.slice(-5).reverse().map(c =>
+    miniItemHTML(
+      Number(c.carteira) === 0 ? c.dep : `Carteira ${c.carteira}`,
+      c.dep,
+      `${Number(c.products[productName].pct).toFixed(1)}%`,
+      c.products[productName].pos || '—'
+    )
+  ).join('');
+  wrap.classList.add('is-visible');
 }
 
 function buildAlerts(rec, prods) {
@@ -1155,11 +1555,11 @@ function formatMobilizacaoScore(v) {
 function render(rec) {
   const si = segInfo(rec);
   const prods = Object.entries(rec.products || {});
-  const avg = prods.length ? prods.reduce((s,[,v]) => s + Number(v.pct || 0), 0) / prods.length : 0;
+  const avgScore = prods.length ? avg(prods.map(([,v]) => Number(v.pct || 0))) : 0;
+  const avgPct = avgScore == null ? 0 : avgScore;
   const hitting = prods.filter(([,v]) => Number(v.pct) >= 100).length;
   const criticalCount = prods.filter(([,v]) => Number(v.pct) < 60).length;
-  const mobiPos = parsePos(rec.mobilizacao?.pos || '');
-  const mobiPosTxt = rec.mobilizacao?.pos ? rec.mobilizacao.pos : '—';
+  const mobiPosTxt = rec.mobilizacao?.pos ? rec.mobilizacao.pos : (rec.synthetic ? 'Consolidado' : '—');
 
   document.getElementById('dep-block').style.display = 'flex';
   document.getElementById('dep-name').innerHTML =
@@ -1181,7 +1581,7 @@ function render(rec) {
     </div>
     <div class="kpi">
       <div class="kl">Média Geral</div>
-      <div class="kv ${kvClass(avg)}">${avg.toFixed(1)}%</div>
+      <div class="kv ${kvClass(avgPct)}">${avgPct.toFixed(1)}%</div>
       <div class="ks">${prods.length} produtos analisados</div>
     </div>
     <div class="kpi">
@@ -1222,7 +1622,7 @@ function render(rec) {
     const rankGoodPct = pos.total ? Math.max(0, Math.min(100, Math.round(((pos.total - pos.cur) / pos.total) * 100))) : 0;
 
     return `
-      <article class="pcard">
+      <article class="pcard" data-product-name="${name}">
         <div class="pcard-top">
           <div class="pcard-name">${name}</div>
           <span class="status-badge ${sbClass}">${sbLabel}</span>
@@ -1249,6 +1649,34 @@ function render(rec) {
       </article>
     `;
   }).join('');
+
+  const clickHint = document.getElementById('product-click-hint');
+  const children = getPrefixChildren(rec);
+  if (children.length) {
+    clickHint.style.display = 'block';
+  } else {
+    clickHint.style.display = 'none';
+  }
+
+  document.querySelectorAll('.pcard').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.pcard').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      activeProductName = card.dataset.productName || '';
+      renderProductDrilldown(rec, activeProductName);
+    });
+  });
+
+  if (activeProductName && prods.some(([name]) => name === activeProductName)) {
+    const activeCard = document.querySelector(`.pcard[data-product-name="${activeProductName}"]`);
+    if (activeCard) activeCard.classList.add('active');
+    renderProductDrilldown(rec, activeProductName);
+  } else {
+    activeProductName = '';
+    renderProductDrilldown(rec, '');
+  }
+
+  renderLeadership(rec);
 }
 
 renderLastUpdate();
