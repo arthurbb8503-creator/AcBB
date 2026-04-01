@@ -4,7 +4,33 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Dashboard de Performance — Carteiras RN</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js">
+function formatDateTime(d){
+  const pad = n => String(n).padStart(2,'0');
+  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function setLastUpdateNow(){
+  const now = new Date();
+  localStorage.setItem('lastUpdate', now.toISOString());
+  renderLastUpdate();
+}
+
+function renderLastUpdate(){
+  const el = document.getElementById('last-update');
+  if(!el) return;
+  const iso = localStorage.getItem('lastUpdate');
+  if(!iso){
+    el.textContent = '';
+    return;
+  }
+  const d = new Date(iso);
+  el.textContent = 'Última atualização: ' + formatDateTime(d);
+}
+
+renderLastUpdate();
+
+</script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -649,11 +675,11 @@ body {
 
       <section class="upload-panel" id="upload-panel">
         <div class="upload-title">Atualizar dashboard com Excel</div>
-        <div class="upload-sub">Disponível apenas no prefixo 8436. Selecione o mesmo arquivo-base em Excel para recarregar os dados da aba Planilha3.</div>
+        <div class="upload-sub"></div>
         <div class="upload-actions">
           <label class="upload-btn" for="excel-upload">Carregar Excel</label>
           <input class="upload-input" type="file" id="excel-upload" accept=".xlsx,.xls" />
-          <div class="upload-status" id="upload-status">Usando a base atual do dashboard.</div>
+          <div class="upload-status" id="upload-status"></div>
         </div>
       </section>
 
@@ -878,7 +904,28 @@ function handleExcelUpload(event) {
   reader.readAsArrayBuffer(file);
 }
 
-uploadInput.addEventListener('change', handleExcelUpload);
+
+let acessoLiberado = false;
+
+uploadInput.addEventListener('click', function(e){
+  const senha = prompt('Digite a senha:');
+  if(senha === '1376878'){
+    acessoLiberado = true;
+  } else {
+    acessoLiberado = false;
+  }
+});
+
+uploadInput.addEventListener('change', function(e){
+  if(!acessoLiberado){
+    e.target.value = '';
+    return;
+  }
+  handleExcelUpload(e);
+  try{ setLastUpdateNow(); }catch(e){}
+});
+
+
 
 function changePrefixo() {
   const p = selP.value;
