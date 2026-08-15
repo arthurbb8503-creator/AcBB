@@ -148,6 +148,8 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
 .field{margin-bottom:12px}
 .field label{display:block;font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:5px}
 .field input,.field select{width:100%;height:48px;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:0 12px}
+.field textarea{width:100%;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:12px;
+  font-family:inherit;font-size:16px;line-height:1.4;resize:vertical;-webkit-user-select:text;user-select:text}
 .field.two{display:flex;gap:10px}
 .field.two>div{flex:1}
 .switch{display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
@@ -391,6 +393,22 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
   </div>
 </div>
 
+<!-- Cobrar no WhatsApp -->
+<div id="sheetCobrar" class="sheet top">
+  <div class="panel">
+    <div class="grab"></div>
+    <div class="ph"><h3>Cobrar</h3><button class="iconbtn" style="background:var(--line);color:var(--ink)" onclick="App.closeSheet('sheetCobrar')">✕</button></div>
+    <div class="pb">
+      <div class="muted" style="margin-bottom:8px" id="cbInfo"></div>
+      <div class="field"><label>Mensagem (dá pra ajustar antes de enviar)</label>
+        <textarea id="cb_msg" rows="9"></textarea></div>
+      <button class="btn primary" id="cbWa" onclick="App.abrirWhatsApp()">Abrir no WhatsApp</button>
+      <div class="btn-row"><button class="btn ghost" onclick="App.copiarCobranca()">Copiar mensagem</button></div>
+      <div class="muted" style="margin-top:10px">Para mudar o texto padrão de todo mundo, vá em ⚙︎ → Mensagem de cobrança.</div>
+    </div>
+  </div>
+</div>
+
 <!-- Form produto -->
 <div id="sheetProduct" class="sheet">
   <div class="panel">
@@ -425,6 +443,17 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
     <div class="ph"><h3>Configurações</h3><button class="iconbtn" style="background:var(--line);color:var(--ink)" onclick="App.closeSheet('sheetSettings')">✕</button></div>
     <div class="pb">
       <div class="card"><h4>Conexão</h4><div id="connInfo" class="muted"></div></div>
+      <div class="card">
+        <h4>Mensagem de cobrança</h4>
+        <div class="muted" style="margin-bottom:10px">Vale para todo mundo. Estas etiquetas são trocadas na hora do envio:
+          <b>{nome}</b>, <b>{valor}</b>, <b>{extrato}</b> (lista das compras), <b>{pix}</b>.</div>
+        <div class="field"><label>Texto padrão</label><textarea id="cfg_msg" rows="8"></textarea></div>
+        <div class="field"><label>Chave Pix (opcional)</label><input id="cfg_pix" placeholder="telefone, CPF ou e-mail"></div>
+        <div class="btn-row" style="margin-top:0">
+          <button class="btn ghost" onclick="App.restaurarMsg()">Restaurar padrão</button>
+          <button class="btn primary" onclick="App.salvarMsg()">Salvar</button>
+        </div>
+      </div>
       <div class="card" id="seedCard">
         <h4>Lista inicial de produtos</h4>
         <div class="muted" style="margin-bottom:10px">Cadastra os 6 itens da compra inicial (jujuba, serenata, pirulitos, bala de iogurte, pipoca). Só cria os que ainda não existem — pode clicar sem medo.</div>
@@ -469,7 +498,7 @@ var FIREBASE_CONFIG = {
    confere se o celular está rodando o arquivo novo ou um velho
    preso no cache.
    ============================================================ */
-var APP_VERSION = '1.7';
+var APP_VERSION = '1.8';
 
 /* ============================================================
    EQUIPE INICIAL
@@ -498,6 +527,18 @@ var SEED_PRODUCTS = [
   {id:'p-bala-iog',  name:'Bala de iogurte',   category:'Doces',    cost:0.22, price:1.00, stock:50,  minStock:10},
   {id:'p-pipoca',    name:'Pipoca Bocus',      category:'Salgados', cost:1.90, price:3.00, stock:20,  minStock:4}
 ];
+
+/* ============================================================
+   MENSAGEM DE COBRANÇA — padrão inicial.
+   Pode ser editada dentro do app (⚙︎) e vale para todo mundo.
+   Etiquetas trocadas na hora do envio:
+     {nome}  {valor}  {extrato}  {pix}
+   ============================================================ */
+var MSG_COBRANCA_PADRAO =
+  'Oi {nome}, tudo bem?\n\n' +
+  'Passando pra lembrar do mercadinho: ficou *R$ {valor}*.\n\n' +
+  '{extrato}\n' +
+  'Pode pagar por Pix ou em dinheiro quando puder. Obrigado!';
 
 /* ---------- util ---------- */
 function money(n){ return (Number(n)||0).toFixed(2).replace('.',','); }
@@ -568,7 +609,8 @@ function payLabel(id){ for(var i=0;i<PAY_METHODS.length;i++){ if(PAY_METHODS[i].
 var Store = (function(){
   var mode='demo', db=null, seeded=false, seededP=false;
   var products=[], sales=[], users=[], customers=[], payments=[];
-  var cbP=function(){}, cbS=function(){}, cbU=function(){}, cbC=function(){}, cbPay=function(){};
+  var config={msgCobranca:MSG_COBRANCA_PADRAO, chavePix:''};
+  var cbP=function(){}, cbS=function(){}, cbU=function(){}, cbC=function(){}, cbPay=function(){}, cbCfg=function(){};
 
   function seedDemo(){
     products=SEED_PRODUCTS.map(function(p){
@@ -636,6 +678,14 @@ var Store = (function(){
       }
       ready.u=true; cbU(users); maybeDone();
     }, function(e){ App.toast('Erro usuários: '+e.message,'err'); });
+    db.collection('config').doc('geral').onSnapshot(function(d){
+      if(d.exists){
+        var o=d.data();
+        if(o.msgCobranca!=null) config.msgCobranca=o.msgCobranca;
+        if(o.chavePix!=null) config.chavePix=o.chavePix;
+        cbCfg(config);
+      }
+    }, function(){});
     db.collection('customers').onSnapshot(function(s){
       customers=s.docs.map(function(d){ var o=d.data(); o.id=d.id; return o; }); cbC(customers);
     }, function(){});
@@ -647,13 +697,14 @@ var Store = (function(){
     }, function(){});
   }
 
-  function emitAll(){ cbP(products); cbU(users); cbS(sales); cbC(customers); cbPay(payments); }
+  function emitAll(){ cbP(products); cbU(users); cbS(sales); cbC(customers); cbPay(payments); cbCfg(config); }
 
   function onProducts(cb){ cbP=cb; if(products.length||mode==='demo') cb(products); }
   function onSales(cb){ cbS=cb; cb(sales); }
   function onUsers(cb){ cbU=cb; if(users.length) cb(users); }
   function onCustomers(cb){ cbC=cb; cb(customers); }
   function onPayments(cb){ cbPay=cb; cb(payments); }
+  function onConfig(cb){ cbCfg=cb; cb(config); }
 
   function getProducts(){return products;} function getSales(){return sales;}
   function getUsers(){return users;} function getCustomers(){return customers;}
@@ -806,7 +857,15 @@ var Store = (function(){
     cbP(products); done&&done(faltam.length);
   }
 
-  return {init:init,onProducts:onProducts,onSales:onSales,onUsers:onUsers,onCustomers:onCustomers,onPayments:onPayments,
+  function getConfig(){ return config; }
+  function saveConfig(patch,done){
+    for(var k in patch) config[k]=patch[k];
+    if(mode==='firebase'){ db.collection('config').doc('geral').set(config,{merge:true}).catch(erro); }
+    cbCfg(config); done&&done();
+  }
+
+  return {init:init,onProducts:onProducts,onSales:onSales,onUsers:onUsers,onCustomers:onCustomers,onPayments:onPayments,onConfig:onConfig,
+    getConfig:getConfig,saveConfig:saveConfig,
     getProducts:getProducts,getSales:getSales,getUsers:getUsers,getCustomers:getCustomers,getPayments:getPayments,
     getMode:getMode,isOnline:isOnline,
     addProduct:addProduct,updateProduct:updateProduct,removeProduct:removeProduct,
@@ -835,6 +894,7 @@ var App = (function(){
     Store.onPayments(function(){ refresh(); });
     Store.onCustomers(function(){ refresh(); });
     Store.onUsers(function(){ renderUserPicker(); renderTeam(); });
+    Store.onConfig(function(){});
     Store.init(function(mode){
       setNet(true);
       renderUserPicker(); tryRestore();
@@ -1248,7 +1308,7 @@ var App = (function(){
     }
     h+='<div class="btn-row">'+
        '<button class="btn ghost" onclick="App.openEditCustomer(\''+c.id+'\')">Editar dados</button>'+
-       '<button class="btn ghost" onclick="App.shareCustomer(\''+c.id+'\')">Enviar resumo</button></div>';
+       '<button class="btn ghost" onclick="App.openCobrar(\''+c.id+'\')">'+(b>0.009?'Cobrar':'Enviar resumo')+'</button></div>';
 
     h+='<div class="section-title" style="margin-top:16px">Histórico</div><div class="card"><div class="tl">';
     if(evs.length===0){ h+='<div class="muted">Sem movimentação.</div>'; }
@@ -1305,21 +1365,67 @@ var App = (function(){
     });
   }
 
-  function shareCustomer(cid){
-    var c=custById(cid); if(!c) return;
-    var b=balance(cid);
-    var lines=['*Mercadinho — caderneta de '+c.name+'*',''];
+  /* ---------- COBRANÇA ---------- */
+  // Monta o número no formato do WhatsApp. 10-11 dígitos = falta o país.
+  // 12-13 = já tem. Isso evita confundir o DDD 55 (RS) com o código do Brasil.
+  function waNumero(tel){
+    var d=(tel||'').replace(/\D/g,'');
+    if(d.length===10||d.length===11) return '55'+d;
+    if(d.length===12||d.length===13) return d;
+    return '';
+  }
+  function extratoDe(cid){
+    var L=[];
     fiadoSalesOf(cid).sort(function(a,z){return toMillis(a)-toMillis(z);}).forEach(function(s){
-      lines.push(fmtDay(s)+' '+fmtTime(s)+' — R$ '+money(s.total));
-      lines.push('   '+(s.items||[]).map(function(i){return i.qty+'× '+i.name;}).join(', '));
+      L.push(fmtDay(s)+' '+fmtTime(s)+' - R$ '+money(s.total));
+      L.push('   '+(s.items||[]).map(function(i){return i.qty+'x '+i.name;}).join(', '));
     });
     var ps=paymentsOf(cid).sort(function(a,z){return toMillis(a)-toMillis(z);});
-    if(ps.length){ lines.push(''); lines.push('*Pagamentos*');
-      ps.forEach(function(p){ lines.push(fmtDay(p)+' — R$ '+money(p.amount)+' ('+payLabel(p.method)+')'); }); }
-    lines.push(''); lines.push(b>0.009? '*Saldo em aberto: R$ '+money(b)+'*' : '*Quitado ✓*');
-    var txt=lines.join('\n');
+    if(ps.length){
+      L.push(''); L.push('Já pago:');
+      ps.forEach(function(p){ L.push(fmtDay(p)+' - R$ '+money(p.amount)+' ('+payLabel(p.method)+')'); });
+    }
+    return L.join('\n');
+  }
+  function montarMensagem(c){
+    var cfg=Store.getConfig();
+    var pix=cfg.chavePix? ('Chave Pix: '+cfg.chavePix) : '';
+    return (cfg.msgCobranca||MSG_COBRANCA_PADRAO)
+      .split('{nome}').join(c.name)
+      .split('{valor}').join(money(balance(c.id)))
+      .split('{extrato}').join(extratoDe(c.id))
+      .split('{pix}').join(pix);
+  }
+  var cobrandoId=null;
+  function openCobrar(cid){
+    var c=custById(cid); if(!c) return;
+    cobrandoId=cid;
+    var num=waNumero(c.phone);
+    var info=document.getElementById('cbInfo');
+    var btn=document.getElementById('cbWa');
+    if(num){
+      info.innerHTML='Para <b>'+esc(c.name)+'</b> · '+esc(c.phone)+' · deve <b>R$ '+money(balance(cid))+'</b>';
+      btn.classList.remove('hidden');
+    } else {
+      info.innerHTML='<b>'+esc(c.name)+'</b> está sem telefone cadastrado. '+
+        'Copie a mensagem, ou use "Editar dados" para incluir o número.';
+      btn.classList.add('hidden');
+    }
+    document.getElementById('cb_msg').value=montarMensagem(c);
+    document.getElementById('sheetCobrar').classList.add('show');
+  }
+  function abrirWhatsApp(){
+    var c=custById(cobrandoId); if(!c) return;
+    var num=waNumero(c.phone);
+    if(!num){ toast('Sem telefone válido','err'); return; }
+    var txt=document.getElementById('cb_msg').value;
+    window.open('https://wa.me/'+num+'?text='+encodeURIComponent(txt),'_blank');
+    closeSheet('sheetCobrar');
+  }
+  function copiarCobranca(){
+    var txt=document.getElementById('cb_msg').value;
     if(navigator.share){ navigator.share({text:txt}).catch(function(){}); }
-    else if(navigator.clipboard){ navigator.clipboard.writeText(txt); toast('Resumo copiado','ok'); }
+    else if(navigator.clipboard){ navigator.clipboard.writeText(txt); toast('Mensagem copiada','ok'); }
     else { alert(txt); }
   }
 
@@ -1594,8 +1700,22 @@ var App = (function(){
     });
   }
 
+  function salvarMsg(){
+    Store.saveConfig({
+      msgCobranca:document.getElementById('cfg_msg').value,
+      chavePix:document.getElementById('cfg_pix').value.trim()
+    },function(){ toast('Mensagem salva','ok'); });
+  }
+  function restaurarMsg(){
+    document.getElementById('cfg_msg').value=MSG_COBRANCA_PADRAO;
+    toast('Texto restaurado — toque em Salvar','ok');
+  }
+
   /* ---------- CONFIG ---------- */
   function openSettings(){
+    var cfg=Store.getConfig();
+    document.getElementById('cfg_msg').value=cfg.msgCobranca||MSG_COBRANCA_PADRAO;
+    document.getElementById('cfg_pix').value=cfg.chavePix||'';
     var info=document.getElementById('connInfo');
     var ver='<br>Versão do app: <b>'+APP_VERSION+'</b>';
     if(Store.getMode()==='firebase'){
@@ -1663,7 +1783,8 @@ var App = (function(){
     openCart:openCart,closeCart:closeCart,clearCart:clearCart,setPay:setPay,finishSale:finishSale,
     renderPickCustomer:renderPickCustomer,chooseCustomer:chooseCustomer,openNewCustomer:openNewCustomer,saveCustomer:saveCustomer,
     renderFiado:renderFiado,openCustomer:openCustomer,openEditCustomer:openEditCustomer,openReceive:openReceive,setReceive:setReceive,
-    setReceiveMethod:setReceiveMethod,savePayment:savePayment,shareCustomer:shareCustomer,shareCaixa:shareCaixa,
+    setReceiveMethod:setReceiveMethod,savePayment:savePayment,shareCaixa:shareCaixa,
+    openCobrar:openCobrar,abrirWhatsApp:abrirWhatsApp,copiarCobranca:copiarCobranca,salvarMsg:salvarMsg,restaurarMsg:restaurarMsg,
     openProductForm:openProductForm,saveProduct:saveProduct,deleteProduct:deleteProduct,calcMargem:calcMargem,
     cancelSale:cancelSale,openSettings:openSettings,addUser:addUser,removeUser:removeUser,resetPin:resetPin,seedProducts:seedProducts,
     toggleEl:toggleEl,closeSheet:closeSheet,toast:toast};
