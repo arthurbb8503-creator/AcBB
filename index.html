@@ -1400,32 +1400,19 @@ var App = (function(){
   function openCobrar(cid){
     var c=custById(cid); if(!c) return;
     cobrandoId=cid;
+    var txt=montarMensagem(c);
     var num=waNumero(c.phone);
-    var info=document.getElementById('cbInfo');
-    var btn=document.getElementById('cbWa');
+
     if(num){
-      info.innerHTML='Para <b>'+esc(c.name)+'</b> · '+esc(c.phone)+' · deve <b>R$ '+money(balance(cid))+'</b>';
-      btn.classList.remove('hidden');
-    } else {
-      info.innerHTML='<b>'+esc(c.name)+'</b> está sem telefone cadastrado. '+
-        'Copie a mensagem, ou use "Editar dados" para incluir o número.';
-      btn.classList.add('hidden');
+      // location.href funciona melhor que window.open quando o app
+      // está rodando da tela inicial (modo standalone no iPhone)
+      window.location.href='https://wa.me/'+num+'?text='+encodeURIComponent(txt);
+      return;
     }
-    document.getElementById('cb_msg').value=montarMensagem(c);
-    document.getElementById('sheetCobrar').classList.add('show');
-  }
-  function abrirWhatsApp(){
-    var c=custById(cobrandoId); if(!c) return;
-    var num=waNumero(c.phone);
-    if(!num){ toast('Sem telefone válido','err'); return; }
-    var txt=document.getElementById('cb_msg').value;
-    window.open('https://wa.me/'+num+'?text='+encodeURIComponent(txt),'_blank');
-    closeSheet('sheetCobrar');
-  }
-  function copiarCobranca(){
-    var txt=document.getElementById('cb_msg').value;
+    // sem telefone: cai para copiar/compartilhar
+    toast('Sem telefone cadastrado — mensagem copiada','err');
     if(navigator.share){ navigator.share({text:txt}).catch(function(){}); }
-    else if(navigator.clipboard){ navigator.clipboard.writeText(txt); toast('Mensagem copiada','ok'); }
+    else if(navigator.clipboard){ navigator.clipboard.writeText(txt); }
     else { alert(txt); }
   }
 
