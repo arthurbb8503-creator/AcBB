@@ -2,7 +2,10 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#1f7a4d">
 <title>Mercadinho ECC</title>
 
@@ -19,12 +22,29 @@
   --radius:16px; --shadow:0 2px 0 rgba(28,42,34,.04), 0 8px 24px rgba(28,42,34,.08);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+html{
+  -webkit-text-size-adjust:100%;   /* não infla fonte ao girar o aparelho */
+  text-size-adjust:100%;
+  touch-action:manipulation;       /* mata o zoom de toque duplo */
+  overscroll-behavior:none;        /* mata o "puxa e volta" da borda */
+  overflow-x:hidden;
+}
+html,body{margin:0;height:100%;width:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   background:var(--bg);color:var(--ink);font-size:16px;line-height:1.35;-webkit-font-smoothing:antialiased;
-  padding-bottom:env(safe-area-inset-bottom)}
-button{font-family:inherit;font-size:16px;cursor:pointer;border:none;background:none;color:inherit}
-input,select{font-family:inherit;font-size:16px}
+  padding-bottom:env(safe-area-inset-bottom);
+  overscroll-behavior:none;
+  overflow-x:hidden;
+  position:relative;
+  /* nada de seleção de texto por toque longo — só nos campos */
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+}
+input,textarea{-webkit-user-select:text;user-select:text}
+button{font-family:inherit;font-size:16px;cursor:pointer;border:none;background:none;color:inherit;touch-action:manipulation}
+/* 16px nos campos impede o iPhone de dar zoom ao focar */
+input,select{font-family:inherit;font-size:16px;max-width:100%}
 .hidden{display:none !important}
 
 #app{max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
@@ -84,7 +104,7 @@ input,select{font-family:inherit;font-size:16px}
 .sheet .panel{background:var(--bg);width:100%;max-width:560px;margin:0 auto;border-radius:20px 20px 0 0;max-height:88vh;display:flex;flex-direction:column}
 .sheet .ph{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 8px}
 .sheet .ph h3{margin:0;font-size:18px}
-.sheet .pb{padding:0 16px 16px;overflow-y:auto}
+.sheet .pb{padding:0 16px 16px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:8px auto 0}
 
 .citem{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:8px}
@@ -446,6 +466,20 @@ var SEED_USERS = [
   {name:'Jordana',   pin:null,   role:'caixa'}
 ];
 
+/* ============================================================
+   PRODUTOS INICIAIS
+   Criados uma única vez, na primeira abertura. Depois disso
+   mexa por dentro do app (aba Produtos). Para não cadastrar
+   nenhum automaticamente, deixe a lista vazia: []
+   ============================================================ */
+var SEED_PRODUCTS = [
+  {id:'p-agua',        name:'Água mineral 500ml', category:'Bebidas',  price:3.00,  stock:40, minStock:8},
+  {id:'p-refri',       name:'Refrigerante lata',  category:'Bebidas',  price:6.00,  stock:30, minStock:6},
+  {id:'p-cafe',        name:'Café',               category:'Bebidas',  price:3.50,  stock:50, minStock:10},
+  {id:'p-brigadeiro',  name:'Brigadeiro',         category:'Doces',    price:3.00,  stock:36, minStock:8},
+  {id:'p-cachorro',    name:'Cachorro-quente',    category:'Salgados', price:10.00, stock:40, minStock:8}
+];
+
 /* ---------- util ---------- */
 function money(n){ return (Number(n)||0).toFixed(2).replace('.',','); }
 function norm(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
@@ -465,9 +499,38 @@ function fmtTime(o){ var d=tsDate(o); if(!d) return '—';
 function fmtDay(o){ var d=tsDate(o); if(!d) return '';
   return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2); }
 function uid(){ return 'id'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
-function safeGet(k){ try{ return sessionStorage.getItem(k);}catch(e){return null;} }
-function safeSet(k,v){ try{ sessionStorage.setItem(k,v);}catch(e){} }
-function safeDel(k){ try{ sessionStorage.removeItem(k);}catch(e){} }
+/* ============================================================
+   SESSÃO — lembra quem entrou por 180 dias.
+   Tenta localStorage; se o navegador bloquear (aba privada,
+   iOS antigo), cai para cookie. Sai só no botão "Sair".
+   ============================================================ */
+var DIAS_LOGADO = 180;
+function setCookie(k,v,dias){
+  var d=new Date(); d.setTime(d.getTime()+dias*864e5);
+  document.cookie=k+'='+encodeURIComponent(v)+';expires='+d.toUTCString()+';path=/;SameSite=Lax';
+}
+function getCookie(k){
+  var parts=document.cookie.split(';');
+  for(var i=0;i<parts.length;i++){
+    var p=parts[i].replace(/^\s+/,'');
+    if(p.indexOf(k+'=')===0) return decodeURIComponent(p.substring(k.length+1));
+  }
+  return null;
+}
+function delCookie(k){ document.cookie=k+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }
+
+function safeGet(k){
+  try{ var v=localStorage.getItem(k); if(v!=null) return v; }catch(e){}
+  return getCookie(k);
+}
+function safeSet(k,v){
+  try{ localStorage.setItem(k,v); }catch(e){}
+  setCookie(k,v,DIAS_LOGADO);
+}
+function safeDel(k){
+  try{ localStorage.removeItem(k); }catch(e){}
+  delCookie(k);
+}
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 var PAY_METHODS = [
@@ -484,22 +547,14 @@ function payLabel(id){ for(var i=0;i<PAY_METHODS.length;i++){ if(PAY_METHODS[i].
    STORE
    ============================================================ */
 var Store = (function(){
-  var mode='demo', db=null, seeded=false;
+  var mode='demo', db=null, seeded=false, seededP=false;
   var products=[], sales=[], users=[], customers=[], payments=[];
   var cbP=function(){}, cbS=function(){}, cbU=function(){}, cbC=function(){}, cbPay=function(){};
 
   function seedDemo(){
-    var P=[
-      ['Água mineral 500ml','Bebidas',3.00,40,8],['Refrigerante lata','Bebidas',6.00,30,6],
-      ['Suco natural copo','Bebidas',7.00,20,5],['Café','Bebidas',3.50,50,10],
-      ['Brigadeiro','Doces',3.00,36,8],['Bolo fatia','Doces',6.00,24,5],
-      ['Cocada','Doces',4.00,18,5],['Pé de moleque','Doces',3.50,15,4],
-      ['Cachorro-quente','Salgados',10.00,40,8],['Coxinha','Salgados',7.00,30,6],
-      ['Pastel','Salgados',8.00,28,6],['Pipoca','Salgados',5.00,25,5],
-      ['Pão de queijo','Salgados',4.00,30,6],['Sacola','Diversos',1.00,50,10],
-      ['Vela lembrança','Diversos',8.00,12,3]
-    ];
-    products=P.map(function(p){ return {id:uid(),name:p[0],category:p[1],price:p[2],stock:p[3],minStock:p[4],active:true}; });
+    products=SEED_PRODUCTS.map(function(p){
+      return {id:p.id,name:p.name,category:p.category,price:p.price,stock:p.stock,minStock:p.minStock,active:true};
+    });
     users=SEED_USERS.map(function(u){
       return {id:uid(),name:u.name,pin:u.pin,role:u.role,active:true};
     });
@@ -539,6 +594,15 @@ var Store = (function(){
     function maybeDone(){ if(ready.p&&ready.u&&cbDone){ var f=cbDone; cbDone=null; f(mode); } }
     db.collection('products').onSnapshot(function(s){
       products=s.docs.map(function(d){ var o=d.data(); o.id=d.id; return o; });
+      if(products.length===0 && !seededP && SEED_PRODUCTS.length){
+        seededP=true;
+        var bp=db.batch();
+        SEED_PRODUCTS.forEach(function(p){
+          bp.set(db.collection('products').doc(p.id),
+            {name:p.name,category:p.category,price:p.price,stock:p.stock,minStock:p.minStock,active:true});
+        });
+        bp.commit().catch(function(){ seededP=false; });
+      }
       ready.p=true; cbP(products); maybeDone();
     }, function(e){ App.toast('Erro produtos: '+e.message,'err'); });
     db.collection('users').onSnapshot(function(s){
@@ -577,16 +641,19 @@ var Store = (function(){
   function getPayments(){return payments;} function getMode(){return mode;}
 
   function addProduct(p,done){
-    if(mode==='firebase'){ db.collection('products').add(p).then(function(){done&&done();}); return; }
+    if(mode==='firebase'){
+      db.collection('products').doc(novoId('products')).set(p).catch(erro);
+      done&&done(); return;
+    }
     p.id=uid(); products.push(p); cbP(products); done&&done();
   }
   function updateProduct(id,patch,done){
-    if(mode==='firebase'){ db.collection('products').doc(id).update(patch).then(function(){done&&done();}); return; }
+    if(mode==='firebase'){ db.collection('products').doc(id).update(patch).catch(erro); done&&done(); return; }
     for(var i=0;i<products.length;i++){ if(products[i].id===id) Object.assign(products[i],patch); }
     cbP(products); done&&done();
   }
   function removeProduct(id,done){
-    if(mode==='firebase'){ db.collection('products').doc(id).delete().then(function(){done&&done();}); return; }
+    if(mode==='firebase'){ db.collection('products').doc(id).delete().catch(erro); done&&done(); return; }
     products=products.filter(function(p){return p.id!==id;}); cbP(products); done&&done();
   }
 
@@ -632,16 +699,33 @@ var Store = (function(){
   }
 
   /* ---- pessoas do fiado ---- */
+  /* ============================================================
+     ESCRITAS OTIMISTAS
+     Com o cache offline ligado, o .then() do Firestore só resolve
+     quando o SERVIDOR confirma. Esperar por ele trava a interface
+     sempre que a rede engasga. Então: gera o ID na hora, grava no
+     cache (o onSnapshot já reflete na tela) e segue a vida.
+     O .catch() avisa se der erro de verdade.
+     ============================================================ */
+  function novoId(col){ return db.collection(col).doc().id; }
+  function erro(e){ App.toast('Erro ao salvar: '+e.message,'err'); }
+
   function addCustomer(c,done){
     c.localAt=Date.now();
     if(mode==='firebase'){
-      db.collection('customers').add(c).then(function(ref){ c.id=ref.id; done&&done(c); });
-      return;
+      var id=novoId('customers');
+      db.collection('customers').doc(id).set(c).catch(erro);
+      c.id=id;
+      // reflete já no espelho local, sem esperar o servidor
+      if(!custExists(id)){ customers.push(c); cbC(customers); }
+      done&&done(c); return;
     }
     c.id=uid(); customers.push(c); cbC(customers); done&&done(c);
   }
+  function custExists(id){ for(var i=0;i<customers.length;i++){ if(customers[i].id===id) return true; } return false; }
+
   function updateCustomer(id,patch,done){
-    if(mode==='firebase'){ db.collection('customers').doc(id).update(patch).then(function(){done&&done();}); return; }
+    if(mode==='firebase'){ db.collection('customers').doc(id).update(patch).catch(erro); done&&done(); return; }
     for(var i=0;i<customers.length;i++){ if(customers[i].id===id) Object.assign(customers[i],patch); }
     cbC(customers); done&&done();
   }
@@ -651,28 +735,35 @@ var Store = (function(){
     p.localAt=Date.now();
     if(mode==='firebase'){
       p.createdAt=firebase.firestore.FieldValue.serverTimestamp();
-      db.collection('payments').add(p).catch(function(e){ App.toast('Erro: '+e.message,'err'); });
+      db.collection('payments').add(p).catch(erro);
       done&&done(true); return;
     }
     p.id=uid(); p.createdAt=new Date(); payments.unshift(p); cbPay(payments); done&&done(true);
   }
   function removePayment(id,done){
-    if(mode==='firebase'){ db.collection('payments').doc(id).delete().then(function(){done&&done();}); return; }
+    if(mode==='firebase'){ db.collection('payments').doc(id).delete().catch(erro); done&&done(); return; }
     payments=payments.filter(function(x){return x.id!==id;}); cbPay(payments); done&&done();
   }
 
   function addUser(u,done){
-    if(mode==='firebase'){ db.collection('users').add(u).then(function(){done&&done();}); return; }
-    u.id=uid(); users.push(u); cbU(users); done&&done();
+    if(mode==='firebase'){
+      var id=novoId('users');
+      db.collection('users').doc(id).set(u).catch(erro);
+      u.id=id;
+      if(!userExists(id)){ users.push(u); cbU(users); }
+      done&&done(u); return;
+    }
+    u.id=uid(); users.push(u); cbU(users); done&&done(u);
   }
+  function userExists(id){ for(var i=0;i<users.length;i++){ if(users[i].id===id) return true; } return false; }
+
   function updateUser(id,patch,done){
-    if(mode==='firebase'){ db.collection('users').doc(id).update(patch).then(function(){done&&done();})
-      .catch(function(e){ App.toast('Erro: '+e.message,'err'); }); return; }
+    if(mode==='firebase'){ db.collection('users').doc(id).update(patch).catch(erro); }
     for(var i=0;i<users.length;i++){ if(users[i].id===id) Object.assign(users[i],patch); }
     cbU(users); done&&done();
   }
   function removeUser(id,done){
-    if(mode==='firebase'){ db.collection('users').doc(id).delete().then(function(){done&&done();}); return; }
+    if(mode==='firebase'){ db.collection('users').doc(id).delete().catch(erro); }
     users=users.filter(function(x){return x.id!==id;}); cbU(users); done&&done();
   }
 
@@ -793,6 +884,7 @@ var App = (function(){
     } else { toast('Senha incorreta','err'); pinBuffer=''; drawPin(); }
   }
   function enterApp(){
+    safeSet('ecc_user',JSON.stringify({id:me.id,name:me.name})); // renova os 180 dias
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     document.getElementById('whoName').textContent=me.name;
@@ -1452,6 +1544,33 @@ var App = (function(){
     openProductForm:openProductForm,saveProduct:saveProduct,deleteProduct:deleteProduct,
     cancelSale:cancelSale,openSettings:openSettings,addUser:addUser,removeUser:removeUser,resetPin:resetPin,
     toggleEl:toggleEl,closeSheet:closeSheet,toast:toast};
+})();
+
+/* ============================================================
+   TRAVA DE ZOOM
+   O Safari do iPhone ignora user-scalable=no, então a pinça e o
+   toque duplo precisam ser barrados na unha.
+   ============================================================ */
+(function travarZoom(){
+  // pinça (iOS)
+  ['gesturestart','gesturechange','gestureend'].forEach(function(ev){
+    document.addEventListener(ev, function(e){ e.preventDefault(); }, {passive:false});
+  });
+  // toque duplo
+  var ultimoToque=0;
+  document.addEventListener('touchend', function(e){
+    var agora=Date.now();
+    if(agora-ultimoToque<=300){ e.preventDefault(); }
+    ultimoToque=agora;
+  }, {passive:false});
+  // dois dedos na tela
+  document.addEventListener('touchmove', function(e){
+    if(e.touches.length>1){ e.preventDefault(); }
+  }, {passive:false});
+  // ctrl+scroll no desktop
+  document.addEventListener('wheel', function(e){
+    if(e.ctrlKey){ e.preventDefault(); }
+  }, {passive:false});
 })();
 
 App.boot();
