@@ -393,22 +393,6 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
   </div>
 </div>
 
-<!-- Cobrar no WhatsApp -->
-<div id="sheetCobrar" class="sheet top">
-  <div class="panel">
-    <div class="grab"></div>
-    <div class="ph"><h3>Cobrar</h3><button class="iconbtn" style="background:var(--line);color:var(--ink)" onclick="App.closeSheet('sheetCobrar')">✕</button></div>
-    <div class="pb">
-      <div class="muted" style="margin-bottom:8px" id="cbInfo"></div>
-      <div class="field"><label>Mensagem (dá pra ajustar antes de enviar)</label>
-        <textarea id="cb_msg" rows="9"></textarea></div>
-      <button class="btn primary" id="cbWa" onclick="App.abrirWhatsApp()">Abrir no WhatsApp</button>
-      <div class="btn-row"><button class="btn ghost" onclick="App.copiarCobranca()">Copiar mensagem</button></div>
-      <div class="muted" style="margin-top:10px">Para mudar o texto padrão de todo mundo, vá em ⚙︎ → Mensagem de cobrança.</div>
-    </div>
-  </div>
-</div>
-
 <!-- Form produto -->
 <div id="sheetProduct" class="sheet">
   <div class="panel">
@@ -498,7 +482,7 @@ var FIREBASE_CONFIG = {
    confere se o celular está rodando o arquivo novo ou um velho
    preso no cache.
    ============================================================ */
-var APP_VERSION = '1.8';
+var APP_VERSION = '1.9';
 
 /* ============================================================
    EQUIPE INICIAL
@@ -880,6 +864,7 @@ var Store = (function(){
 var App = (function(){
   var me=null, cart={}, activeCat='Todos', activePay='pix', currentTab='vendas';
   var editingId=null, pinBuffer='', pinUser=null, pinMode='enter', pinFirst='';
+  var conectado=false, watchdog=null;
   var CATS=['Todos','Bebidas','Doces','Salgados','Diversos'];
   var pendingSale=null;      // venda aguardando escolha da pessoa (fiado)
   var openCustomerId=null;   // caderneta aberta
@@ -889,6 +874,19 @@ var App = (function(){
   function boot(){
     var lv=document.getElementById('loginVer');
     if(lv) lv.textContent='versão '+APP_VERSION;
+
+    // Enquanto o banco não responde, a tela diz o que está havendo.
+    // Se em 8s nada chegar, oferece recarregar (o botão fura o cache).
+    document.getElementById('userpick').innerHTML=
+      '<div class="muted center" style="grid-column:1/-1;padding:10px">Conectando ao banco…</div>';
+    conectado=false;
+    watchdog=setTimeout(function(){
+      if(conectado) return;
+      document.getElementById('userpick').innerHTML=
+        '<div class="muted center" style="grid-column:1/-1;padding:10px">'+
+        'Não conseguiu conectar.<br>Verifique a internet e tente de novo.</div>'+
+        '<button class="btn primary" style="grid-column:1/-1" onclick="App.recarregar()">Recarregar</button>';
+    },8000);
     Store.onProducts(function(){ if(currentTab==='vendas') renderProducts(); if(currentTab==='produtos') renderProductList(); refresh(); });
     Store.onSales(function(){ refresh(); });
     Store.onPayments(function(){ refresh(); });
@@ -896,10 +894,16 @@ var App = (function(){
     Store.onUsers(function(){ renderUserPicker(); renderTeam(); });
     Store.onConfig(function(){});
     Store.init(function(mode){
+      conectado=true; if(watchdog) clearTimeout(watchdog);
       setNet(true);
       renderUserPicker(); tryRestore();
     });
     buildKeys(); buildCats(); buildPay();
+  }
+
+  function recarregar(){
+    // muda a URL para obrigar o navegador a baixar o arquivo novo
+    window.location.href = window.location.pathname + '?r=' + Date.now();
   }
 
   function setNet(on){
@@ -1771,7 +1775,7 @@ var App = (function(){
     renderPickCustomer:renderPickCustomer,chooseCustomer:chooseCustomer,openNewCustomer:openNewCustomer,saveCustomer:saveCustomer,
     renderFiado:renderFiado,openCustomer:openCustomer,openEditCustomer:openEditCustomer,openReceive:openReceive,setReceive:setReceive,
     setReceiveMethod:setReceiveMethod,savePayment:savePayment,shareCaixa:shareCaixa,
-    openCobrar:openCobrar,abrirWhatsApp:abrirWhatsApp,copiarCobranca:copiarCobranca,salvarMsg:salvarMsg,restaurarMsg:restaurarMsg,
+    openCobrar:openCobrar,salvarMsg:salvarMsg,restaurarMsg:restaurarMsg,
     openProductForm:openProductForm,saveProduct:saveProduct,deleteProduct:deleteProduct,calcMargem:calcMargem,
     cancelSale:cancelSale,openSettings:openSettings,addUser:addUser,removeUser:removeUser,resetPin:resetPin,seedProducts:seedProducts,
     toggleEl:toggleEl,closeSheet:closeSheet,toast:toast};
