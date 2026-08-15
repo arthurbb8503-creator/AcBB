@@ -257,6 +257,7 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
   <div class="logo">
     <div class="mk">Mercadinho<span class="dot">.</span>ECC</div>
     <div class="sub">Toque no seu nome para entrar</div>
+    <div class="sub" id="loginVer" style="font-size:11px;opacity:.6;margin-top:6px"></div>
   </div>
   <div id="userpick" class="userpick"></div>
   <div id="pinarea" class="hidden">
@@ -420,6 +421,11 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
     <div class="ph"><h3>Configurações</h3><button class="iconbtn" style="background:var(--line);color:var(--ink)" onclick="App.closeSheet('sheetSettings')">✕</button></div>
     <div class="pb">
       <div class="card"><h4>Conexão</h4><div id="connInfo" class="muted"></div></div>
+      <div class="card" id="seedCard">
+        <h4>Produtos de exemplo</h4>
+        <div class="muted" style="margin-bottom:10px">Cadastra 5 itens de teste (água, refrigerante, café, brigadeiro, cachorro-quente). Só cria os que ainda não existem — pode clicar sem medo.</div>
+        <button class="btn ghost" onclick="App.seedProducts()">Cadastrar produtos de exemplo</button>
+      </div>
       <div class="card" id="teamCard">
         <h4>Equipe</h4>
         <div id="teamList"></div>
@@ -452,6 +458,14 @@ var FIREBASE_CONFIG = {
   messagingSenderId: "737925800815",
   appId: "1:737925800815:web:cef086b646263df3e27e9a"
 };
+
+/* ============================================================
+   VERSÃO — aumente a cada alteração que subir no GitHub.
+   Aparece na tela de login e nas configurações: é como você
+   confere se o celular está rodando o arquivo novo ou um velho
+   preso no cache.
+   ============================================================ */
+var APP_VERSION = '1.4';
 
 /* ============================================================
    EQUIPE INICIAL
@@ -767,13 +781,33 @@ var Store = (function(){
     users=users.filter(function(x){return x.id!==id;}); cbU(users); done&&done();
   }
 
+  function seedProductsNow(done){
+    var existentes={};
+    products.forEach(function(p){ existentes[p.id]=true; });
+    var faltam=SEED_PRODUCTS.filter(function(p){ return !existentes[p.id]; });
+    if(faltam.length===0){ done&&done(0); return; }
+    if(mode==='firebase'){
+      var b=db.batch();
+      faltam.forEach(function(p){
+        b.set(db.collection('products').doc(p.id),
+          {name:p.name,category:p.category,price:p.price,stock:p.stock,minStock:p.minStock,active:true});
+      });
+      b.commit().catch(erro);
+      done&&done(faltam.length); return;
+    }
+    faltam.forEach(function(p){
+      products.push({id:p.id,name:p.name,category:p.category,price:p.price,stock:p.stock,minStock:p.minStock,active:true});
+    });
+    cbP(products); done&&done(faltam.length);
+  }
+
   return {init:init,onProducts:onProducts,onSales:onSales,onUsers:onUsers,onCustomers:onCustomers,onPayments:onPayments,
     getProducts:getProducts,getSales:getSales,getUsers:getUsers,getCustomers:getCustomers,getPayments:getPayments,
     getMode:getMode,isOnline:isOnline,
     addProduct:addProduct,updateProduct:updateProduct,removeProduct:removeProduct,
     recordSale:recordSale,cancelSale:cancelSale,
     addCustomer:addCustomer,updateCustomer:updateCustomer,addPayment:addPayment,removePayment:removePayment,
-    addUser:addUser,updateUser:updateUser,removeUser:removeUser};
+    addUser:addUser,updateUser:updateUser,removeUser:removeUser,seedProductsNow:seedProductsNow};
 })();
 
 /* ============================================================
@@ -789,6 +823,8 @@ var App = (function(){
   var receiveMethod='dinheiro';
 
   function boot(){
+    var lv=document.getElementById('loginVer');
+    if(lv) lv.textContent='versão '+APP_VERSION;
     Store.onProducts(function(){ if(currentTab==='vendas') renderProducts(); if(currentTab==='produtos') renderProductList(); refresh(); });
     Store.onSales(function(){ refresh(); });
     Store.onPayments(function(){ refresh(); });
@@ -1472,14 +1508,22 @@ var App = (function(){
     updateCartBar(); updateFiadoBadge();
   }
 
+  function seedProducts(){
+    Store.seedProductsNow(function(n){
+      toast(n>0? n+' produto(s) cadastrados ✓' : 'Os 5 exemplos já existem','ok');
+      renderProductList(); if(currentTab==='vendas') renderProducts();
+    });
+  }
+
   /* ---------- CONFIG ---------- */
   function openSettings(){
     var info=document.getElementById('connInfo');
+    var ver='<br>Versão do app: <b>'+APP_VERSION+'</b>';
     if(Store.getMode()==='firebase'){
-      info.innerHTML='🟢 <b>Firebase</b> · projeto '+esc(FIREBASE_CONFIG.projectId)+
+      info.innerHTML='🟢 <b>Firebase</b> · projeto '+esc(FIREBASE_CONFIG.projectId)+ver+
         '<br>Cache offline ativo: se a internet cair, dá pra continuar vendendo e sincroniza sozinho quando voltar.';
     } else {
-      info.innerHTML='🟡 <b>Modo demonstração</b><br>Dados ficam só neste aparelho e somem ao recarregar.<br>'+
+      info.innerHTML='🟡 <b>Modo demonstração</b>'+ver+'<br>Dados ficam só neste aparelho e somem ao recarregar.<br>'+
         'Cole a config do Firebase no topo do arquivo para usar entre vários celulares.';
     }
     document.getElementById('teamCard').style.display=(me&&me.role==='admin')?'block':'none';
@@ -1542,7 +1586,7 @@ var App = (function(){
     renderFiado:renderFiado,openCustomer:openCustomer,openReceive:openReceive,setReceive:setReceive,
     setReceiveMethod:setReceiveMethod,savePayment:savePayment,shareCustomer:shareCustomer,shareCaixa:shareCaixa,
     openProductForm:openProductForm,saveProduct:saveProduct,deleteProduct:deleteProduct,
-    cancelSale:cancelSale,openSettings:openSettings,addUser:addUser,removeUser:removeUser,resetPin:resetPin,
+    cancelSale:cancelSale,openSettings:openSettings,addUser:addUser,removeUser:removeUser,resetPin:resetPin,seedProducts:seedProducts,
     toggleEl:toggleEl,closeSheet:closeSheet,toast:toast};
 })();
 
@@ -1556,11 +1600,20 @@ var App = (function(){
   ['gesturestart','gesturechange','gestureend'].forEach(function(ev){
     document.addEventListener(ev, function(e){ e.preventDefault(); }, {passive:false});
   });
-  // toque duplo
+  // toque duplo: bloqueia o zoom SEM engolir toques rápidos
+  // em botões e campos (vender 2 unidades, digitar PIN rápido)
   var ultimoToque=0;
+  function interativo(t){
+    while(t && t!==document.body){
+      var tag=t.tagName;
+      if(tag==='BUTTON'||tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA'||tag==='LABEL'||t.onclick) return true;
+      t=t.parentNode;
+    }
+    return false;
+  }
   document.addEventListener('touchend', function(e){
     var agora=Date.now();
-    if(agora-ultimoToque<=300){ e.preventDefault(); }
+    if(agora-ultimoToque<=300 && !interativo(e.target)){ e.preventDefault(); }
     ultimoToque=agora;
   }, {passive:false});
   // dois dedos na tela
