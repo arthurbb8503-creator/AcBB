@@ -426,9 +426,9 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
     <div class="pb">
       <div class="card"><h4>Conexão</h4><div id="connInfo" class="muted"></div></div>
       <div class="card" id="seedCard">
-        <h4>Produtos de exemplo</h4>
-        <div class="muted" style="margin-bottom:10px">Cadastra 5 itens de teste (água, refrigerante, café, brigadeiro, cachorro-quente). Só cria os que ainda não existem — pode clicar sem medo.</div>
-        <button class="btn ghost" onclick="App.seedProducts()">Cadastrar produtos de exemplo</button>
+        <h4>Lista inicial de produtos</h4>
+        <div class="muted" style="margin-bottom:10px">Cadastra os 6 itens da compra inicial (jujuba, serenata, pirulitos, bala de iogurte, pipoca). Só cria os que ainda não existem — pode clicar sem medo.</div>
+        <button class="btn ghost" onclick="App.seedProducts()">Cadastrar lista inicial</button>
       </div>
       <div class="card" id="teamCard">
         <h4>Equipe</h4>
@@ -469,7 +469,7 @@ var FIREBASE_CONFIG = {
    confere se o celular está rodando o arquivo novo ou um velho
    preso no cache.
    ============================================================ */
-var APP_VERSION = '1.6';
+var APP_VERSION = '1.7';
 
 /* ============================================================
    EQUIPE INICIAL
@@ -491,11 +491,12 @@ var SEED_USERS = [
    nenhum automaticamente, deixe a lista vazia: []
    ============================================================ */
 var SEED_PRODUCTS = [
-  {id:'p-agua',        name:'Água mineral 500ml', category:'Bebidas',  cost:1.20, price:3.00,  stock:40, minStock:8},
-  {id:'p-refri',       name:'Refrigerante lata',  category:'Bebidas',  cost:3.00, price:6.00,  stock:30, minStock:6},
-  {id:'p-cafe',        name:'Café',               category:'Bebidas',  cost:0.80, price:3.50,  stock:50, minStock:10},
-  {id:'p-brigadeiro',  name:'Brigadeiro',         category:'Doces',    cost:1.00, price:3.00,  stock:36, minStock:8},
-  {id:'p-cachorro',    name:'Cachorro-quente',    category:'Salgados', cost:4.50, price:10.00, stock:40, minStock:8}
+  {id:'p-jujuba',    name:'Jujuba',            category:'Doces',    cost:0.57, price:1.00, stock:30,  minStock:6},
+  {id:'p-serenata',  name:'Serenata de Amor',  category:'Doces',    cost:0.57, price:2.00, stock:200, minStock:40},
+  {id:'p-pir-cab',   name:'Pirulito cabeção',  category:'Doces',    cost:0.28, price:1.00, stock:50,  minStock:10},
+  {id:'p-pir-cor',   name:'Pirulito coração',  category:'Doces',    cost:0.23, price:1.00, stock:50,  minStock:10},
+  {id:'p-bala-iog',  name:'Bala de iogurte',   category:'Doces',    cost:0.22, price:1.00, stock:50,  minStock:10},
+  {id:'p-pipoca',    name:'Pipoca Bocus',      category:'Salgados', cost:1.90, price:3.00, stock:20,  minStock:4}
 ];
 
 /* ---------- util ---------- */
