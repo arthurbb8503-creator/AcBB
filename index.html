@@ -360,7 +360,7 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
     <div class="pb">
       <div class="field"><label>Nome</label><input id="nc_name" placeholder="Nome de quem vai pagar depois"></div>
       <div class="field"><label>Telefone (opcional)</label><input id="nc_phone" inputmode="tel" placeholder="(84) 9...."></div>
-      <div class="field"><label>Observação (opcional)</label><input id="nc_note" placeholder="Ex: equipe da cozinha"></div>
+      <div class="field"><label>Equipe / observação (opcional)</label><input id="nc_note" placeholder="Ex: cozinha, recepção, círculo 3"></div>
       <button class="btn fiado" onclick="App.saveCustomer()">Salvar</button>
     </div>
   </div>
@@ -469,7 +469,7 @@ var FIREBASE_CONFIG = {
    confere se o celular está rodando o arquivo novo ou um velho
    preso no cache.
    ============================================================ */
-var APP_VERSION = '1.5';
+var APP_VERSION = '1.6';
 
 /* ============================================================
    EQUIPE INICIAL
@@ -1102,9 +1102,9 @@ var App = (function(){
     var s=pendingSale; pendingSale=null; commitSale(s);
   }
 
-  var ncForPicker=false;
+  var ncForPicker=false, editingCustomerId=null;
   function openNewCustomer(standalone){
-    ncForPicker=!standalone;
+    ncForPicker=!standalone; editingCustomerId=null;
     document.getElementById('ncTitle').textContent='Nova pessoa';
     document.getElementById('nc_name').value='';
     document.getElementById('nc_phone').value='';
@@ -1112,12 +1112,33 @@ var App = (function(){
     document.getElementById('sheetNewCustomer').classList.add('show');
     setTimeout(function(){ document.getElementById('nc_name').focus(); },150);
   }
+  function openEditCustomer(id){
+    var c=custById(id); if(!c) return;
+    ncForPicker=false; editingCustomerId=id;
+    document.getElementById('ncTitle').textContent='Editar pessoa';
+    document.getElementById('nc_name').value=c.name||'';
+    document.getElementById('nc_phone').value=c.phone||'';
+    document.getElementById('nc_note').value=c.note||'';
+    document.getElementById('sheetNewCustomer').classList.add('show');
+  }
   function saveCustomer(){
     var name=document.getElementById('nc_name').value.trim();
     if(!name){ toast('Informe o nome','err'); return; }
-    var c={name:name,phone:document.getElementById('nc_phone').value.trim(),
-      note:document.getElementById('nc_note').value.trim(),active:true};
-    Store.addCustomer(c,function(saved){
+    var dados={name:name,
+      phone:document.getElementById('nc_phone').value.trim(),
+      note:document.getElementById('nc_note').value.trim()};
+
+    if(editingCustomerId){
+      Store.updateCustomer(editingCustomerId,dados,function(){
+        toast('Dados atualizados','ok');
+        closeSheet('sheetNewCustomer');
+        editingCustomerId=null;
+        renderCustomerSheet(); renderFiado();
+      });
+      return;
+    }
+    dados.active=true;
+    Store.addCustomer(dados,function(saved){
       closeSheet('sheetNewCustomer');
       if(ncForPicker && pendingSale){ chooseCustomer(saved.id); }
       else { toast('Pessoa cadastrada','ok'); renderFiado(); }
@@ -1177,7 +1198,7 @@ var App = (function(){
         return '<button class="crow quit" onclick="App.openCustomer(\''+x.c.id+'\')">'+
           '<span class="av">'+esc(x.c.name.charAt(0).toUpperCase())+'</span>'+
           '<span class="c-info"><span class="c-name">'+esc(x.c.name)+'</span>'+
-          '<span class="c-sub">'+(x.c.phone?esc(x.c.phone):'sem pendência')+'</span></span>'+
+          '<span class="c-sub">'+(x.c.note?esc(x.c.note):(x.c.phone?esc(x.c.phone):'sem pendência'))+'</span></span>'+
           '<span class="c-bal">quitado</span></button>';
       }).join('');
     }
@@ -1217,15 +1238,16 @@ var App = (function(){
     h+='<div class="balbox'+(b<=0.009?' ok':'')+'">'+
        '<div class="bl2">'+(b>0.009?'Saldo devedor':'Está quitado')+'</div>'+
        '<div class="bv2">R$ '+money(b>0?b:0)+'</div>'+
-       (c.phone?'<div class="bl2" style="margin-top:4px">'+esc(c.phone)+'</div>':'')+'</div>';
+       (c.phone?'<div class="bl2" style="margin-top:4px">'+esc(c.phone)+'</div>':'')+
+       (c.note?'<div class="bl2" style="margin-top:2px">'+esc(c.note)+'</div>':'')+'</div>';
 
     if(b>0.009){
       h+='<button class="btn primary" onclick="App.openReceive(\''+c.id+'\',true)">Receber tudo (R$ '+money(b)+')</button>';
       h+='<div class="btn-row"><button class="btn ghost" onclick="App.openReceive(\''+c.id+'\',false)">Pagamento parcial</button></div>';
-      h+='<div class="btn-row"><button class="btn ghost" onclick="App.shareCustomer(\''+c.id+'\')">Enviar resumo</button></div>';
-    } else {
-      h+='<div class="btn-row"><button class="btn ghost" onclick="App.shareCustomer(\''+c.id+'\')">Enviar resumo</button></div>';
     }
+    h+='<div class="btn-row">'+
+       '<button class="btn ghost" onclick="App.openEditCustomer(\''+c.id+'\')">Editar dados</button>'+
+       '<button class="btn ghost" onclick="App.shareCustomer(\''+c.id+'\')">Enviar resumo</button></div>';
 
     h+='<div class="section-title" style="margin-top:16px">Histórico</div><div class="card"><div class="tl">';
     if(evs.length===0){ h+='<div class="muted">Sem movimentação.</div>'; }
@@ -1503,9 +1525,14 @@ var App = (function(){
     else{
       h+=all.map(function(s){
         var itemsTxt=(s.items||[]).map(function(it){return it.qty+'× '+it.name;}).join(', ');
+        var nomeFiado='';
+        if(s.customerId){
+          var cAtual=custById(s.customerId);
+          nomeFiado=' · '+esc(cAtual? cAtual.name : (s.customerName||''));
+        }
         var badge=s.canceled? '<span class="badge-cancel">Cancelada</span>'
           : '<span class="badge-pay'+(s.paymentMethod==='fiado'?' fi':'')+'">'+payLabel(s.paymentMethod)+
-            (s.customerName?' · '+esc(s.customerName):'')+'</span>';
+            nomeFiado+'</span>';
         return '<div class="sale'+(s.canceled?' canceled':'')+'">'+
           '<div class="s-top"><span class="s-tot">R$ '+money(s.total)+'</span>'+badge+'</div>'+
           '<div class="s-meta">'+fmtTime(s)+' · '+esc(s.sellerName||'—')+'</div>'+
@@ -1634,7 +1661,7 @@ var App = (function(){
     setCat:setCat,renderProducts:renderProducts,addToCart:addToCart,setQty:setQty,
     openCart:openCart,closeCart:closeCart,clearCart:clearCart,setPay:setPay,finishSale:finishSale,
     renderPickCustomer:renderPickCustomer,chooseCustomer:chooseCustomer,openNewCustomer:openNewCustomer,saveCustomer:saveCustomer,
-    renderFiado:renderFiado,openCustomer:openCustomer,openReceive:openReceive,setReceive:setReceive,
+    renderFiado:renderFiado,openCustomer:openCustomer,openEditCustomer:openEditCustomer,openReceive:openReceive,setReceive:setReceive,
     setReceiveMethod:setReceiveMethod,savePayment:savePayment,shareCustomer:shareCustomer,shareCaixa:shareCaixa,
     openProductForm:openProductForm,saveProduct:saveProduct,deleteProduct:deleteProduct,calcMargem:calcMargem,
     cancelSale:cancelSale,openSettings:openSettings,addUser:addUser,removeUser:removeUser,resetPin:resetPin,seedProducts:seedProducts,
