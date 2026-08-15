@@ -402,10 +402,14 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
         <select id="pf_cat"><option>Bebidas</option><option>Doces</option><option>Salgados</option><option>Diversos</option></select>
       </div>
       <div class="field two">
-        <div><label>Preço (R$)</label><input id="pf_price" inputmode="decimal" placeholder="0,00"></div>
-        <div><label>Estoque</label><input id="pf_stock" inputmode="numeric" placeholder="0"></div>
+        <div><label>Custo (R$)</label><input id="pf_cost" inputmode="decimal" placeholder="0,00" oninput="App.calcMargem()"></div>
+        <div><label>Venda (R$)</label><input id="pf_price" inputmode="decimal" placeholder="0,00" oninput="App.calcMargem()"></div>
       </div>
-      <div class="field"><label>Estoque mínimo (alerta)</label><input id="pf_min" inputmode="numeric" placeholder="5"></div>
+      <div id="pf_margem" class="muted" style="margin:-6px 0 12px;padding-left:2px">Quanto você paga e quanto cobra. O custo é opcional.</div>
+      <div class="field two">
+        <div><label>Estoque</label><input id="pf_stock" inputmode="numeric" placeholder="0"></div>
+        <div><label>Estoque mínimo</label><input id="pf_min" inputmode="numeric" placeholder="5"></div>
+      </div>
       <div class="switch"><div><b>Produto ativo</b><div class="muted">Inativos não aparecem na venda</div></div>
         <div id="pf_active" class="toggle on" onclick="App.toggleEl(this)"><div class="knob"></div></div></div>
       <button class="btn primary" onclick="App.saveProduct()">Salvar produto</button>
@@ -465,7 +469,7 @@ var FIREBASE_CONFIG = {
    confere se o celular está rodando o arquivo novo ou um velho
    preso no cache.
    ============================================================ */
-var APP_VERSION = '1.4';
+var APP_VERSION = '1.5';
 
 /* ============================================================
    EQUIPE INICIAL
@@ -487,11 +491,11 @@ var SEED_USERS = [
    nenhum automaticamente, deixe a lista vazia: []
    ============================================================ */
 var SEED_PRODUCTS = [
-  {id:'p-agua',        name:'Água mineral 500ml', category:'Bebidas',  price:3.00,  stock:40, minStock:8},
-  {id:'p-refri',       name:'Refrigerante lata',  category:'Bebidas',  price:6.00,  stock:30, minStock:6},
-  {id:'p-cafe',        name:'Café',               category:'Bebidas',  price:3.50,  stock:50, minStock:10},
-  {id:'p-brigadeiro',  name:'Brigadeiro',         category:'Doces',    price:3.00,  stock:36, minStock:8},
-  {id:'p-cachorro',    name:'Cachorro-quente',    category:'Salgados', price:10.00, stock:40, minStock:8}
+  {id:'p-agua',        name:'Água mineral 500ml', category:'Bebidas',  cost:1.20, price:3.00,  stock:40, minStock:8},
+  {id:'p-refri',       name:'Refrigerante lata',  category:'Bebidas',  cost:3.00, price:6.00,  stock:30, minStock:6},
+  {id:'p-cafe',        name:'Café',               category:'Bebidas',  cost:0.80, price:3.50,  stock:50, minStock:10},
+  {id:'p-brigadeiro',  name:'Brigadeiro',         category:'Doces',    cost:1.00, price:3.00,  stock:36, minStock:8},
+  {id:'p-cachorro',    name:'Cachorro-quente',    category:'Salgados', cost:4.50, price:10.00, stock:40, minStock:8}
 ];
 
 /* ---------- util ---------- */
@@ -567,7 +571,7 @@ var Store = (function(){
 
   function seedDemo(){
     products=SEED_PRODUCTS.map(function(p){
-      return {id:p.id,name:p.name,category:p.category,price:p.price,stock:p.stock,minStock:p.minStock,active:true};
+      return {id:p.id,name:p.name,category:p.category,cost:(p.cost||0),price:p.price,stock:p.stock,minStock:p.minStock,active:true};
     });
     users=SEED_USERS.map(function(u){
       return {id:uid(),name:u.name,pin:u.pin,role:u.role,active:true};
@@ -613,7 +617,7 @@ var Store = (function(){
         var bp=db.batch();
         SEED_PRODUCTS.forEach(function(p){
           bp.set(db.collection('products').doc(p.id),
-            {name:p.name,category:p.category,price:p.price,stock:p.stock,minStock:p.minStock,active:true});
+            {name:p.name,category:p.category,cost:(p.cost||0),price:p.price,stock:p.stock,minStock:p.minStock,active:true});
         });
         bp.commit().catch(function(){ seededP=false; });
       }
@@ -790,13 +794,13 @@ var Store = (function(){
       var b=db.batch();
       faltam.forEach(function(p){
         b.set(db.collection('products').doc(p.id),
-          {name:p.name,category:p.category,price:p.price,stock:p.stock,minStock:p.minStock,active:true});
+          {name:p.name,category:p.category,cost:(p.cost||0),price:p.price,stock:p.stock,minStock:p.minStock,active:true});
       });
       b.commit().catch(erro);
       done&&done(faltam.length); return;
     }
     faltam.forEach(function(p){
-      products.push({id:p.id,name:p.name,category:p.category,price:p.price,stock:p.stock,minStock:p.minStock,active:true});
+      products.push({id:p.id,name:p.name,category:p.category,cost:(p.cost||0),price:p.price,stock:p.stock,minStock:p.minStock,active:true});
     });
     cbP(products); done&&done(faltam.length);
   }
@@ -1042,7 +1046,8 @@ var App = (function(){
     if(saving) return;
     var ids=Object.keys(cart);
     if(ids.length===0){ toast('Carrinho vazio','err'); return; }
-    var items=ids.map(function(id){ var p=prodById(id); return {id:id,name:p.name,price:p.price,qty:cart[id]}; });
+    var items=ids.map(function(id){ var p=prodById(id);
+      return {id:id,name:p.name,price:p.price,cost:(p.cost||0),qty:cart[id]}; });
     var sale={items:items,total:cartTotal(),paymentMethod:activePay,
       sellerId:me.id,sellerName:me.name,canceled:false};
 
@@ -1306,9 +1311,11 @@ var App = (function(){
     el.innerHTML=ps.map(function(p){
       var out=p.stock<=0, low=!out&&p.stock<=(p.minStock||0);
       var tag=out?'<span class="tag out">Esgotado</span>':(low?'<span class="tag low">Baixo</span>':'');
+      var preco = p.cost? ('R$ '+money(p.cost)+' → R$ '+money(p.price)+' ('+Math.round((p.price-p.cost)/p.price*100)+'%)')
+                        : ('R$ '+money(p.price)+' · <span style="color:var(--warn)">sem custo</span>');
       return '<div class="row'+(p.active===false?' inactive':'')+'">'+
         '<div class="r-info"><div class="r-name">'+esc(p.name)+' '+tag+'</div>'+
-        '<div class="r-meta">'+esc(p.category)+' · R$ '+money(p.price)+' · estoque '+p.stock+' (mín '+(p.minStock||0)+')'+
+        '<div class="r-meta">'+esc(p.category)+' · '+preco+' · estoque '+p.stock+' (mín '+(p.minStock||0)+')'+
         (p.active===false?' · inativo':'')+'</div></div>'+
         '<button class="r-edit" onclick="App.openProductForm(\''+p.id+'\')">Editar</button></div>';
     }).join('');
@@ -1321,6 +1328,7 @@ var App = (function(){
       document.getElementById('pfTitle').textContent='Editar produto';
       document.getElementById('pf_name').value=p.name;
       document.getElementById('pf_cat').value=p.category;
+      document.getElementById('pf_cost').value=p.cost?money(p.cost):'';
       document.getElementById('pf_price').value=money(p.price);
       document.getElementById('pf_stock').value=p.stock;
       document.getElementById('pf_min').value=p.minStock||0;
@@ -1329,17 +1337,31 @@ var App = (function(){
       document.getElementById('pfTitle').textContent='Novo produto';
       document.getElementById('pf_name').value='';
       document.getElementById('pf_cat').value='Bebidas';
+      document.getElementById('pf_cost').value='';
       document.getElementById('pf_price').value='';
       document.getElementById('pf_stock').value='';
       document.getElementById('pf_min').value='5';
       setToggle('pf_active',true); del.classList.add('hidden');
     }
     document.getElementById('sheetProduct').classList.add('show');
+    calcMargem();
   }
+  function calcMargem(){
+    var c=parseNum(document.getElementById('pf_cost').value);
+    var v=parseNum(document.getElementById('pf_price').value);
+    var el=document.getElementById('pf_margem');
+    if(!v){ el.innerHTML='Quanto você paga e quanto cobra. O custo é opcional.'; el.style.color=''; return; }
+    if(!c){ el.innerHTML='Sem custo informado — o lucro deste item não entra no painel.'; el.style.color=''; return; }
+    var lucro=v-c, pct=Math.round(lucro/v*100);
+    if(lucro<0){ el.innerHTML='<b>Atenção: você está vendendo abaixo do custo</b> (perde R$ '+money(-lucro)+' por unidade)'; el.style.color='var(--danger)'; }
+    else { el.innerHTML='Lucro de <b>R$ '+money(lucro)+'</b> por unidade · margem '+pct+'%'; el.style.color='var(--brand-d)'; }
+  }
+
   function saveProduct(){
     var name=document.getElementById('pf_name').value.trim();
     if(!name){ toast('Informe o nome','err'); return; }
     var data={name:name,category:document.getElementById('pf_cat').value,
+      cost:parseNum(document.getElementById('pf_cost').value),
       price:parseNum(document.getElementById('pf_price').value),
       stock:Math.round(parseNum(document.getElementById('pf_stock').value)),
       minStock:Math.round(parseNum(document.getElementById('pf_min').value)),
@@ -1368,19 +1390,38 @@ var App = (function(){
     });
     var top=Object.keys(prodCount).map(function(k){return {name:k,qty:prodCount[k]};})
       .sort(function(a,b){return b.qty-a.qty;}).slice(0,5);
-    var ticket=count?total/count:0;
+
+    // lucro: só conta itens que têm custo registrado
+    var lucro=0, receitaComCusto=0, itensSemCusto=0;
+    ts.forEach(function(s){
+      (s.items||[]).forEach(function(it){
+        if(it.cost>0){ lucro+=(it.price-it.cost)*it.qty; receitaComCusto+=it.price*it.qty; }
+        else itensSemCusto+=it.qty;
+      });
+    });
+
     var maxPay=1; PAY_METHODS.forEach(function(m){ if(byPay[m.id]>maxPay) maxPay=byPay[m.id]; });
     var ps=Store.getProducts();
     var lowList=ps.filter(function(p){ return p.active!==false && p.stock<=(p.minStock||0); })
       .sort(function(a,b){ return a.stock-b.stock; });
 
+    // dinheiro parado em mercadoria
+    var custoEstoque=0, vendaEstoque=0;
+    ps.forEach(function(p){ if(p.active===false) return;
+      custoEstoque+=(p.cost||0)*p.stock; vendaEstoque+=p.price*p.stock; });
+
     var h='';
     h+='<div class="kpis">'+
       '<div class="kpi"><div class="k-label">Vendido hoje</div><div class="k-val">R$ '+money(total)+'</div></div>'+
+      '<div class="kpi"><div class="k-label">Lucro hoje</div><div class="k-val">R$ '+money(lucro)+'</div></div>'+
       '<div class="kpi"><div class="k-label">Vendas</div><div class="k-val">'+count+'</div></div>'+
-      '<div class="kpi"><div class="k-label">Ticket médio</div><div class="k-val">R$ '+money(ticket)+'</div></div>'+
       '<div class="kpi fi"><div class="k-label">Fiado em aberto</div><div class="k-val">R$ '+money(totalOwed())+'</div></div>'+
     '</div>';
+    if(itensSemCusto>0){
+      h+='<div class="card" style="border-color:#e8d5b8;background:#fffdf9;padding:11px 14px">'+
+         '<div class="muted"><b>'+itensSemCusto+' item(ns) vendido(s) sem custo cadastrado</b> — não entraram no lucro. '+
+         'Preencha o custo em Produtos para o número ficar real.</div></div>';
+    }
 
     h+='<div class="card"><h4>Por forma de pagamento</h4><div class="bars">'+
       PAY_METHODS.map(function(m){
@@ -1401,6 +1442,12 @@ var App = (function(){
           var t=p.stock<=0?'<span class="tag out">Esgotado</span>':'<span class="tag low">'+p.stock+' un</span>';
           return '<li><span>'+esc(p.name)+'</span><span>'+t+'</span></li>';}).join('')+'</ul>';
     h+='</div>';
+
+    h+='<div class="card"><h4>Dinheiro parado em estoque</h4><ul class="minilist">'+
+      '<li><span>Custo do que está na prateleira</span><span class="qt">R$ '+money(custoEstoque)+'</span></li>'+
+      '<li><span>Se vender tudo</span><span class="qt">R$ '+money(vendaEstoque)+'</span></li>'+
+      '<li><span>Lucro a realizar</span><span class="qt">R$ '+money(vendaEstoque-custoEstoque)+'</span></li>'+
+      '</ul></div>';
 
     document.getElementById('painel').innerHTML=h;
   }
@@ -1480,6 +1527,9 @@ var App = (function(){
     tp.forEach(function(p){ if(rec[p.method]!=null) rec[p.method]+=p.amount||0; recTotal+=p.amount||0; });
     var cashIn=0; RECEIVE_METHODS.forEach(function(m){ cashIn+=(byPay[m.id]||0)+(rec[m.id]||0); });
 
+    var lucro=0;
+    ts.forEach(function(s){ (s.items||[]).forEach(function(it){ if(it.cost>0) lucro+=(it.price-it.cost)*it.qty; }); });
+
     var d=new Date();
     var L=['*Fechamento do mercadinho — '+('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'*',''];
     RECEIVE_METHODS.forEach(function(m){ L.push(m.label+': R$ '+money((byPay[m.id]||0)+(rec[m.id]||0))); });
@@ -1488,6 +1538,7 @@ var App = (function(){
     L.push('Cortesia: R$ '+money(byPay.cortesia||0));
     if(recTotal>0) L.push('Recebido de fiado: R$ '+money(recTotal));
     L.push('Faturado: R$ '+money(faturado));
+    L.push('*Lucro estimado: R$ '+money(lucro)+'*');
     L.push('Vendas: '+ts.length,'');
     L.push('Fiado total em aberto: R$ '+money(totalOwed()));
     var txt=L.join('\n');
@@ -1585,7 +1636,7 @@ var App = (function(){
     renderPickCustomer:renderPickCustomer,chooseCustomer:chooseCustomer,openNewCustomer:openNewCustomer,saveCustomer:saveCustomer,
     renderFiado:renderFiado,openCustomer:openCustomer,openReceive:openReceive,setReceive:setReceive,
     setReceiveMethod:setReceiveMethod,savePayment:savePayment,shareCustomer:shareCustomer,shareCaixa:shareCaixa,
-    openProductForm:openProductForm,saveProduct:saveProduct,deleteProduct:deleteProduct,
+    openProductForm:openProductForm,saveProduct:saveProduct,deleteProduct:deleteProduct,calcMargem:calcMargem,
     cancelSale:cancelSale,openSettings:openSettings,addUser:addUser,removeUser:removeUser,resetPin:resetPin,seedProducts:seedProducts,
     toggleEl:toggleEl,closeSheet:closeSheet,toast:toast};
 })();
