@@ -302,7 +302,6 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
   </div>
 
   <div id="view-caixa" class="view hidden">
-    <div class="section-title">Caixa de hoje</div>
     <div id="caixa"></div>
   </div>
 
@@ -482,7 +481,7 @@ var FIREBASE_CONFIG = {
    confere se o celular está rodando o arquivo novo ou um velho
    preso no cache.
    ============================================================ */
-var APP_VERSION = '1.9';
+var APP_VERSION = '2.1';
 
 /* ============================================================
    EQUIPE INICIAL
@@ -673,10 +672,10 @@ var Store = (function(){
     db.collection('customers').onSnapshot(function(s){
       customers=s.docs.map(function(d){ var o=d.data(); o.id=d.id; return o; }); cbC(customers);
     }, function(){});
-    db.collection('sales').orderBy('localAt','desc').limit(1000).onSnapshot(function(s){
+    db.collection('sales').limit(1000).onSnapshot(function(s){
       sales=s.docs.map(function(d){ var o=d.data(); o.id=d.id; return o; }); cbS(sales);
     }, function(){});
-    db.collection('payments').orderBy('localAt','desc').limit(1000).onSnapshot(function(s){
+    db.collection('payments').limit(1000).onSnapshot(function(s){
       payments=s.docs.map(function(d){ var o=d.data(); o.id=d.id; return o; }); cbPay(payments);
     }, function(){});
   }
@@ -1573,8 +1572,30 @@ var App = (function(){
   }
 
   /* ---------- CAIXA ---------- */
+  var caixaPeriodo='hoje'; // hoje | ontem | 7d | tudo
+  function setPeriodo(p){ caixaPeriodo=p; renderCaixa(); }
+  function periodoLabel(){
+    return {hoje:'hoje', ontem:'ontem', '7d':'últimos 7 dias', tudo:'todo o período'}[caixaPeriodo];
+  }
+  function noPeriodo(o){
+    var d=tsDate(o); if(!d) return false;
+    var hoje=new Date();
+    if(caixaPeriodo==='hoje') return todayKey(d)===todayKey();
+    if(caixaPeriodo==='ontem'){
+      var ontem=new Date(hoje.getTime()-864e5);
+      return todayKey(d)===todayKey(ontem);
+    }
+    if(caixaPeriodo==='7d'){
+      var inicio=new Date(hoje.getFullYear(),hoje.getMonth(),hoje.getDate()-6);
+      return d>=inicio;
+    }
+    return true; // tudo
+  }
+  function periodSales(){ return Store.getSales().filter(function(s){ return !s.canceled && noPeriodo(s); }); }
+  function periodPayments(){ return Store.getPayments().filter(function(p){ return noPeriodo(p); }); }
+
   function renderCaixa(){
-    var ts=todaySales(), tp=todayPayments();
+    var ts=periodSales(), tp=periodPayments();
     var byPay={}; PAY_METHODS.forEach(function(m){ byPay[m.id]=0; });
     ts.forEach(function(s){ if(byPay[s.paymentMethod]!=null) byPay[s.paymentMethod]+=s.total||0; });
 
@@ -1589,7 +1610,12 @@ var App = (function(){
     ts.forEach(function(s){ var k=s.sellerName||'—'; byOp[k]=(byOp[k]||0)+(s.total||0); });
 
     var h='';
-    h+='<div class="card"><h4>Conferência do caixa</h4><div class="bars">'+
+    h+='<div class="section-title">Caixa</div>';
+    h+='<div class="cats" style="padding-bottom:12px">'+
+      [['hoje','Hoje'],['ontem','Ontem'],['7d','7 dias'],['tudo','Tudo']].map(function(pp){
+        return '<button class="chip'+(caixaPeriodo===pp[0]?' active':'')+'" onclick="App.setPeriodo(\''+pp[0]+'\')">'+pp[1]+'</button>';
+      }).join('')+'</div>';
+    h+='<div class="card"><h4>Conferência do caixa — '+periodoLabel()+'</h4><div class="bars">'+
       RECEIVE_METHODS.map(function(m){
         var vendas=byPay[m.id]||0, rec=recByMethod[m.id]||0;
         return '<div class="bar-row"><span class="bl">'+m.ic+' '+m.label+'</span><span class="bt"></span>'+
@@ -1602,10 +1628,10 @@ var App = (function(){
     '</div></div>';
 
     h+='<div class="card fi"><h4>Não entrou em caixa</h4><div class="bars">'+
-      '<div class="bar-row"><span class="bl">📒 Fiado hoje</span><span class="bt"></span><span class="bv">R$ '+money(byPay.fiado||0)+'</span></div>'+
+      '<div class="bar-row"><span class="bl">📒 Fiado</span><span class="bt"></span><span class="bv">R$ '+money(byPay.fiado||0)+'</span></div>'+
       '<div class="bar-row"><span class="bl">🎁 Cortesia</span><span class="bt"></span><span class="bv">R$ '+money(byPay.cortesia||0)+'</span></div>'+
       '<div class="bar-row" style="border-top:1px solid var(--line);padding-top:9px;margin-top:4px">'+
-      '<span class="bl"><b>Faturado hoje</b></span><span class="bt"></span><span class="bv"><b>R$ '+money(faturado)+'</b></span></div>'+
+      '<span class="bl"><b>Faturado</b></span><span class="bt"></span><span class="bv"><b>R$ '+money(faturado)+'</b></span></div>'+
       '</div><div class="muted" style="margin-top:8px">Fiado total em aberto (todos os dias): <b>R$ '+money(totalOwed())+'</b></div></div>';
 
     h+='<div class="card"><h4>Por operador (vendas)</h4>';
@@ -1616,9 +1642,12 @@ var App = (function(){
 
     h+='<div class="btn-row" style="margin-bottom:14px"><button class="btn ghost" onclick="App.shareCaixa()">Enviar fechamento</button></div>';
 
-    var all=Store.getSales().filter(function(s){ return isToday(s); })
+    var all=Store.getSales().filter(function(s){ return noPeriodo(s); })
       .sort(function(a,b){ return toMillis(b)-toMillis(a); });
-    h+='<div class="section-title" style="margin-top:6px">Vendas de hoje ('+ts.length+')</div>';
+    var LIMITE=150, cortadas=all.length>LIMITE;
+    if(cortadas) all=all.slice(0,LIMITE);
+    h+='<div class="section-title" style="margin-top:6px">Vendas — '+periodoLabel()+' ('+ts.length+')</div>';
+    if(cortadas) h+='<div class="muted" style="margin-bottom:8px">Mostrando as '+LIMITE+' mais recentes.</div>';
     if(all.length===0){ h+='<div class="empty"><div class="em">💵</div>Nenhuma venda registrada.</div>'; }
     else{
       h+=all.map(function(s){
@@ -1633,7 +1662,7 @@ var App = (function(){
             nomeFiado+'</span>';
         return '<div class="sale'+(s.canceled?' canceled':'')+'">'+
           '<div class="s-top"><span class="s-tot">R$ '+money(s.total)+'</span>'+badge+'</div>'+
-          '<div class="s-meta">'+fmtTime(s)+' · '+esc(s.sellerName||'—')+'</div>'+
+          '<div class="s-meta">'+(caixaPeriodo==='hoje'?'':fmtDay(s)+' ')+fmtTime(s)+' · '+esc(s.sellerName||'—')+'</div>'+
           '<div class="s-items">'+esc(itemsTxt)+'</div>'+
           (s.canceled?'':'<button class="s-cancel" onclick="App.cancelSale(\''+s.id+'\')">↩︎ Cancelar venda (devolve ao estoque)</button>')+
         '</div>';
@@ -1643,7 +1672,7 @@ var App = (function(){
   }
 
   function shareCaixa(){
-    var ts=todaySales(), tp=todayPayments();
+    var ts=periodSales(), tp=periodPayments();
     var byPay={}; PAY_METHODS.forEach(function(m){ byPay[m.id]=0; });
     var faturado=0;
     ts.forEach(function(s){ faturado+=s.total||0; if(byPay[s.paymentMethod]!=null) byPay[s.paymentMethod]+=s.total||0; });
@@ -1656,7 +1685,7 @@ var App = (function(){
     ts.forEach(function(s){ (s.items||[]).forEach(function(it){ if(it.cost>0) lucro+=(it.price-it.cost)*it.qty; }); });
 
     var d=new Date();
-    var L=['*Fechamento do mercadinho — '+('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'*',''];
+    var L=['*Fechamento do mercadinho — '+periodoLabel()+' ('+('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+')*',''];
     RECEIVE_METHODS.forEach(function(m){ L.push(m.label+': R$ '+money((byPay[m.id]||0)+(rec[m.id]||0))); });
     L.push('*ENTROU EM CAIXA: R$ '+money(cashIn)+'*','');
     L.push('Fiado hoje: R$ '+money(byPay.fiado||0));
@@ -1768,7 +1797,7 @@ var App = (function(){
     clearTimeout(toastT); toastT=setTimeout(function(){ t.classList.remove('show'); },2000);
   }
 
-  return {boot:boot,tab:tab,fabAction:fabAction,setNet:setNet,
+  return {boot:boot,tab:tab,fabAction:fabAction,setNet:setNet,recarregar:recarregar,
     pickUser:pickUser,cancelPin:cancelPin,pinKey:pinKey,logout:logout,
     setCat:setCat,renderProducts:renderProducts,addToCart:addToCart,setQty:setQty,
     openCart:openCart,closeCart:closeCart,clearCart:clearCart,setPay:setPay,finishSale:finishSale,
@@ -1777,7 +1806,7 @@ var App = (function(){
     setReceiveMethod:setReceiveMethod,savePayment:savePayment,shareCaixa:shareCaixa,
     openCobrar:openCobrar,salvarMsg:salvarMsg,restaurarMsg:restaurarMsg,
     openProductForm:openProductForm,saveProduct:saveProduct,deleteProduct:deleteProduct,calcMargem:calcMargem,
-    cancelSale:cancelSale,openSettings:openSettings,addUser:addUser,removeUser:removeUser,resetPin:resetPin,seedProducts:seedProducts,
+    cancelSale:cancelSale,setPeriodo:setPeriodo,openSettings:openSettings,addUser:addUser,removeUser:removeUser,resetPin:resetPin,seedProducts:seedProducts,
     toggleEl:toggleEl,closeSheet:closeSheet,toast:toast};
 })();
 
