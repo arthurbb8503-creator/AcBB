@@ -411,6 +411,21 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
   </div>
 </div>
 
+<!-- Digitar valor vendido -->
+<div id="sheetValor" class="sheet top">
+  <div class="panel">
+    <div class="grab"></div>
+    <div class="ph"><h3 id="vlTitulo">Quanto vendeu?</h3><button class="iconbtn" style="background:var(--line);color:var(--ink)" onclick="App.closeSheet('sheetValor')">✕</button></div>
+    <div class="pb">
+      <div class="muted" id="vlInfo" style="margin-bottom:10px"></div>
+      <div class="field"><label>Valor vendido (R$)</label><input id="vl_valor" inputmode="decimal" placeholder="0,00" oninput="App.previewValor()"></div>
+      <div class="quick" id="vlQuick"></div>
+      <div id="vlPreview" class="muted" style="margin-bottom:12px"></div>
+      <button class="btn primary" onclick="App.confirmarValor()">Adicionar ao carrinho</button>
+    </div>
+  </div>
+</div>
+
 <!-- Form produto -->
 <div id="sheetProduct" class="sheet">
   <div class="panel">
@@ -421,6 +436,16 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
       <div class="field"><label>Categoria</label>
         <select id="pf_cat"><option>Bebidas</option><option>Doces</option><option>Salgados</option><option>Diversos</option></select>
       </div>
+      <div class="switch"><div><b>Venda por valor</b><div class="muted">Para linhas de fornecedor (terços, artigos).<br>Sem estoque: você digita quanto vendeu.</div></div>
+        <div id="pf_tipo" class="toggle" onclick="App.toggleTipo(this)"><div class="knob"></div></div></div>
+
+      <div id="pf_bloco_valor" class="hidden">
+        <div class="field"><label>Fornecedor</label><input id="pf_forn" placeholder="Nome do fornecedor"></div>
+        <div class="field"><label>Meu lucro (%)</label><input id="pf_com" inputmode="decimal" placeholder="30" oninput="App.calcMargem()"></div>
+        <div id="pf_exemplo" class="muted" style="margin:-6px 0 12px;padding-left:2px"></div>
+      </div>
+
+      <div id="pf_bloco_unid">
       <div class="field two">
         <div><label>Custo (R$)</label><input id="pf_cost" inputmode="decimal" placeholder="0,00" oninput="App.calcMargem()"></div>
         <div><label>Venda (R$)</label><input id="pf_price" inputmode="decimal" placeholder="0,00" oninput="App.calcMargem()"></div>
@@ -429,6 +454,7 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
       <div class="field two">
         <div><label>Estoque</label><input id="pf_stock" inputmode="numeric" placeholder="0"></div>
         <div><label>Estoque mínimo</label><input id="pf_min" inputmode="numeric" placeholder="5"></div>
+      </div>
       </div>
       <div class="switch"><div><b>Produto ativo</b><div class="muted">Inativos não aparecem na venda</div></div>
         <div id="pf_active" class="toggle on" onclick="App.toggleEl(this)"><div class="knob"></div></div></div>
@@ -505,7 +531,7 @@ var FIREBASE_CONFIG = {
    confere se o celular está rodando o arquivo novo ou um velho
    preso no cache.
    ============================================================ */
-var APP_VERSION = '2.2';
+var APP_VERSION = '2.4';
 
 /* ============================================================
    PAPÉIS
@@ -873,6 +899,7 @@ var Store = (function(){
       sale.createdAt=firebase.firestore.FieldValue.serverTimestamp();
       batch.set(ref,sale);
       sale.items.forEach(function(it){
+        if(it.porValor) return;   // linha de fornecedor: sem controle de estoque
         batch.update(db.collection('products').doc(it.id),
           {stock:firebase.firestore.FieldValue.increment(-it.qty)});
       });
@@ -882,6 +909,7 @@ var Store = (function(){
     }
     sale.id=uid(); sale.createdAt=new Date();
     sale.items.forEach(function(it){
+      if(it.porValor) return;
       for(var i=0;i<products.length;i++){ if(products[i].id===it.id) products[i].stock-=it.qty; }
     });
     sales.unshift(sale); cbS(sales); cbP(products); done&&done(true);
@@ -894,6 +922,7 @@ var Store = (function(){
       var batch=db.batch();
       batch.update(db.collection('sales').doc(id),{canceled:true});
       sale.items.forEach(function(it){
+        if(it.porValor) return;
         batch.update(db.collection('products').doc(it.id),
           {stock:firebase.firestore.FieldValue.increment(it.qty)});
       });
@@ -902,6 +931,7 @@ var Store = (function(){
     }
     sale.canceled=true;
     sale.items.forEach(function(it){
+      if(it.porValor) return;
       for(var i=0;i<products.length;i++){ if(products[i].id===it.id) products[i].stock+=it.qty; }
     });
     cbS(sales); cbP(products); done&&done(true);
@@ -1041,7 +1071,7 @@ var Store = (function(){
    APP
    ============================================================ */
 var App = (function(){
-  var me=null, cart={}, activeCat='Todos', activePay='pix', currentTab='vendas';
+  var me=null, cart={}, cartValor={}, activeCat='Todos', activePay='pix', currentTab='vendas';
   var editingId=null, pinBuffer='', pinUser=null, pinMode='enter', pinFirst='';
   var conectado=false, watchdog=null;
   var CATS=['Todos','Bebidas','Doces','Salgados','Diversos'];
@@ -1253,6 +1283,15 @@ var App = (function(){
     var g=document.getElementById('grid');
     if(list.length===0){ g.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="em">🔎</div>Nenhum produto encontrado.</div>'; return; }
     g.innerHTML=list.map(function(p){
+      if(p.tipo==='valor'){
+        var jaVal=cartValor[p.id]||0;
+        return '<button class="pcard" onclick="App.abrirValor(\''+p.id+'\')">'+
+          (jaVal?'<span class="qbadge">R$ '+money(jaVal)+'</span>':'')+
+          '<div><div class="pname">'+esc(p.name)+'</div>'+
+          '<div class="pcat">'+esc(p.fornecedor||p.category)+'</div></div>'+
+          '<div class="prow"><span class="pprice" style="font-size:15px">Digitar valor</span>'+
+          '<span class="pstock">'+(p.comissao||0)+'% meu</span></div></button>';
+      }
       var out=p.stock<=0, low=!out&&p.stock<=(p.minStock||0), inCart=cart[p.id]||0;
       return '<button class="pcard'+(out?' disabled':'')+'" onclick="App.addToCart(\''+p.id+'\')">'+
         (inCart?'<span class="qbadge">'+inCart+'</span>':'')+
@@ -1277,8 +1316,9 @@ var App = (function(){
     renderProducts(); updateCartBar(); renderCartItems();
     if(cartCount()===0) closeCart();
   }
-  function cartCount(){ var n=0; for(var k in cart) n+=cart[k]; return n; }
-  function cartTotal(){ var t=0; for(var k in cart){ var p=prodById(k); if(p) t+=p.price*cart[k]; } return t; }
+  function cartCount(){ var n=0; for(var k in cart) n+=cart[k]; for(var j in cartValor) n+=1; return n; }
+  function cartTotal(){ var t=0; for(var k in cart){ var p=prodById(k); if(p) t+=p.price*cart[k]; }
+    for(var j in cartValor) t+=cartValor[j]; return t; }
 
   function updateCartBar(){
     var n=cartCount();
@@ -1288,11 +1328,11 @@ var App = (function(){
   }
   function openCart(){ if(cartCount()===0) return; renderCartItems(); buildPay(); document.getElementById('sheetCart').classList.add('show'); }
   function closeCart(){ document.getElementById('sheetCart').classList.remove('show'); }
-  function clearCart(){ cart={}; renderProducts(); updateCartBar(); renderCartItems(); closeCart(); }
+  function clearCart(){ cart={}; cartValor={}; renderProducts(); updateCartBar(); renderCartItems(); closeCart(); }
 
   function renderCartItems(){
-    var el=document.getElementById('cartItems'), ids=Object.keys(cart);
-    if(ids.length===0){ el.innerHTML='<div class="empty"><div class="em">🛒</div>Carrinho vazio</div>'; }
+    var el=document.getElementById('cartItems'), ids=Object.keys(cart), idv=Object.keys(cartValor);
+    if(ids.length===0 && idv.length===0){ el.innerHTML='<div class="empty"><div class="em">🛒</div>Carrinho vazio</div>'; }
     else{
       el.innerHTML=ids.map(function(id){
         var p=prodById(id), q=cart[id];
@@ -1301,6 +1341,16 @@ var App = (function(){
           '<div class="stepper"><button onclick="App.setQty(\''+id+'\',-1)">−</button>'+
           '<span class="qv">'+q+'</span><button onclick="App.setQty(\''+id+'\',1)">+</button></div>'+
           '<div class="ci-line">R$ '+money(p.price*q)+'</div></div>';
+      }).join('');
+    }
+    if(idv.length){
+      el.innerHTML+=idv.map(function(id){
+        var p=prodById(id);
+        return '<div class="citem"><div class="ci-info"><div class="ci-name">'+esc(p.name)+'</div>'+
+          '<div class="ci-sub">'+esc(p.fornecedor||'')+' · '+(p.comissao||0)+'% meu</div></div>'+
+          '<button class="r-edit" onclick="App.abrirValor(\''+id+'\')">alterar</button>'+
+          '<button class="r-edit" style="background:#f7d9d6;border-color:#f7d9d6;color:var(--danger)" onclick="App.tirarValor(\''+id+'\')">✕</button>'+
+          '<div class="ci-line">R$ '+money(cartValor[id])+'</div></div>';
       }).join('');
     }
     document.getElementById('cartTot2').textContent=money(cartTotal());
@@ -1324,9 +1374,15 @@ var App = (function(){
     if(soOlha()) return bloqueia();
     if(saving) return;
     var ids=Object.keys(cart);
-    if(ids.length===0){ toast('Carrinho vazio','err'); return; }
+    if(ids.length===0 && Object.keys(cartValor).length===0){ toast('Carrinho vazio','err'); return; }
     var items=ids.map(function(id){ var p=prodById(id);
       return {id:id,name:p.name,price:p.price,cost:(p.cost||0),qty:cart[id]}; });
+    Object.keys(cartValor).forEach(function(id){
+      var p=prodById(id), v=cartValor[id], com=(p.comissao||0)/100;
+      // o fornecedor define o preço final; meu lucro é o percentual combinado
+      items.push({id:id,name:p.name,price:v,cost:Math.round(v*(1-com)*100)/100,qty:1,
+                  porValor:true,fornecedor:p.fornecedor||''});
+    });
     var sale={items:items,total:cartTotal(),paymentMethod:activePay,
       sellerId:me.id,sellerName:me.name,canceled:false};
 
@@ -1341,7 +1397,7 @@ var App = (function(){
         toast(sale.paymentMethod==='fiado'
           ? 'Anotado na caderneta de '+sale.customerName
           : 'Venda registrada ✓','ok');
-        cart={}; closeCart(); renderProducts(); updateCartBar(); refresh();
+        cart={}; cartValor={}; closeCart(); renderProducts(); updateCartBar(); refresh();
       }
     });
   }
@@ -1528,7 +1584,10 @@ var App = (function(){
     }
     h+='<div class="btn-row">'+
        '<button class="btn ghost" onclick="App.openEditCustomer(\''+c.id+'\')">Editar dados</button>'+
-       '<button class="btn ghost" onclick="App.openCobrar(\''+c.id+'\')">'+(b>0.009?'Cobrar':'Enviar resumo')+'</button></div>';
+       '<button class="btn ghost" onclick="App.openCobrar(\''+c.id+'\')">'+(b>0.009?'Cobrar no WhatsApp':'Enviar resumo')+'</button></div>';
+    if(!soOlha() && fiadoSalesOf(c.id).length===0 && paymentsOf(c.id).length===0){
+      h+='<div class="btn-row"><button class="btn ghost" style="color:var(--danger)" onclick="App.excluirCustomer(\''+c.id+'\')">Excluir da lista</button></div>';
+    }
 
     h+='<div class="section-title" style="margin-top:16px">Histórico</div><div class="card"><div class="tl">';
     if(evs.length===0){ h+='<div class="muted">Sem movimentação.</div>'; }
@@ -1669,6 +1728,13 @@ var App = (function(){
     el.innerHTML=ps.map(function(p){
       var out=p.stock<=0, low=!out&&p.stock<=(p.minStock||0);
       var tag=out?'<span class="tag out">Esgotado</span>':(low?'<span class="tag low">Baixo</span>':'');
+      if(p.tipo==='valor'){
+        return '<div class="row'+(p.active===false?' inactive':'')+'">'+
+          '<div class="r-info"><div class="r-name">'+esc(p.name)+' <span class="tag low">por valor</span></div>'+
+          '<div class="r-meta">'+esc(p.fornecedor||'sem fornecedor')+' · '+(p.comissao||0)+'% meu'+
+          (p.active===false?' · inativo':'')+'</div></div>'+
+          '<button class="r-edit" onclick="App.openProductForm(\''+p.id+'\')">Editar</button></div>';
+      }
       var preco = p.cost? ('R$ '+money(p.cost)+' → R$ '+money(p.price)+' ('+Math.round((p.price-p.cost)/p.price*100)+'%)')
                         : ('R$ '+money(p.price)+' · <span style="color:var(--warn)">sem custo</span>');
       return '<div class="row'+(p.active===false?' inactive':'')+'">'+
@@ -1687,6 +1753,11 @@ var App = (function(){
       document.getElementById('pfTitle').textContent='Editar produto';
       document.getElementById('pf_name').value=p.name;
       document.getElementById('pf_cat').value=p.category;
+      setToggle('pf_tipo', p.tipo==='valor');
+      document.getElementById('pf_forn').value=p.fornecedor||'';
+      document.getElementById('pf_com').value=p.comissao||'';
+      document.getElementById('pf_bloco_valor').classList.toggle('hidden',p.tipo!=='valor');
+      document.getElementById('pf_bloco_unid').classList.toggle('hidden',p.tipo==='valor');
       document.getElementById('pf_cost').value=p.cost?money(p.cost):'';
       document.getElementById('pf_price').value=money(p.price);
       document.getElementById('pf_stock').value=p.stock;
@@ -1696,6 +1767,11 @@ var App = (function(){
       document.getElementById('pfTitle').textContent='Novo produto';
       document.getElementById('pf_name').value='';
       document.getElementById('pf_cat').value='Bebidas';
+      setToggle('pf_tipo', false);
+      document.getElementById('pf_forn').value='';
+      document.getElementById('pf_com').value='';
+      document.getElementById('pf_bloco_valor').classList.add('hidden');
+      document.getElementById('pf_bloco_unid').classList.remove('hidden');
       document.getElementById('pf_cost').value='';
       document.getElementById('pf_price').value='';
       document.getElementById('pf_stock').value='';
@@ -1705,7 +1781,64 @@ var App = (function(){
     document.getElementById('sheetProduct').classList.add('show');
     calcMargem();
   }
+  /* ---------- VENDA POR VALOR ---------- */
+  var valorPara=null;
+  function abrirValor(id){
+    if(soOlha()) return bloqueia();
+    var p=prodById(id); if(!p) return;
+    valorPara=id;
+    document.getElementById('vlTitulo').textContent=p.name;
+    document.getElementById('vlInfo').innerHTML=
+      (p.fornecedor? 'Fornecedor: <b>'+esc(p.fornecedor)+'</b> · ':'')+
+      'seu lucro: <b>'+(p.comissao||0)+'%</b>';
+    document.getElementById('vl_valor').value=cartValor[id]? money(cartValor[id]) : '';
+    document.getElementById('vlQuick').innerHTML=
+      [20,50,100].map(function(v){ return '<button onclick="App.setValor('+v+')">'+v+'</button>'; }).join('');
+    previewValor();
+    document.getElementById('sheetValor').classList.add('show');
+    setTimeout(function(){ document.getElementById('vl_valor').focus(); },150);
+  }
+  function setValor(v){
+    var atual=parseNum(document.getElementById('vl_valor').value);
+    document.getElementById('vl_valor').value=money(atual+v);
+    previewValor();
+  }
+  function previewValor(){
+    var p=prodById(valorPara); if(!p) return;
+    var v=parseNum(document.getElementById('vl_valor').value);
+    var com=(p.comissao||0)/100;
+    document.getElementById('vlPreview').innerHTML= v>0
+      ? 'Desses R$ '+money(v)+': <b style="color:var(--brand-d)">R$ '+money(v*com)+' seu</b>, R$ '+money(v*(1-com))+' do fornecedor.'
+      : '';
+  }
+  function confirmarValor(){
+    var v=parseNum(document.getElementById('vl_valor').value);
+    if(v<=0){ toast('Informe o valor','err'); return; }
+    cartValor[valorPara]=v;
+    closeSheet('sheetValor'); renderProducts(); updateCartBar(); renderCartItems();
+    toast('Adicionado: R$ '+money(v),'ok');
+  }
+  function tirarValor(id){
+    delete cartValor[id];
+    renderProducts(); updateCartBar(); renderCartItems();
+    if(cartCount()===0) closeCart();
+  }
+  function toggleTipo(el){
+    el.classList.toggle('on');
+    var porValor=el.classList.contains('on');
+    document.getElementById('pf_bloco_valor').classList.toggle('hidden',!porValor);
+    document.getElementById('pf_bloco_unid').classList.toggle('hidden',porValor);
+    calcMargem();
+  }
+
   function calcMargem(){
+    if(document.getElementById('pf_tipo').classList.contains('on')){
+      var com=parseNum(document.getElementById('pf_com').value);
+      document.getElementById('pf_exemplo').innerHTML= com>0
+        ? 'Numa venda de R$ 100,00: <b style="color:var(--brand-d)">R$ '+money(com)+' seu</b>, R$ '+money(100-com)+' do fornecedor.'
+        : 'Informe o percentual que fica com você.';
+      return;
+    }
     var c=parseNum(document.getElementById('pf_cost').value);
     var v=parseNum(document.getElementById('pf_price').value);
     var el=document.getElementById('pf_margem');
@@ -1719,7 +1852,19 @@ var App = (function(){
   function saveProduct(){
     var name=document.getElementById('pf_name').value.trim();
     if(!name){ toast('Informe o nome','err'); return; }
-    var data={name:name,category:document.getElementById('pf_cat').value,
+    var porValor=document.getElementById('pf_tipo').classList.contains('on');
+    if(porValor){
+      var dv={name:name,category:document.getElementById('pf_cat').value,tipo:'valor',
+        fornecedor:document.getElementById('pf_forn').value.trim(),
+        comissao:parseNum(document.getElementById('pf_com').value),
+        cost:0,price:0,stock:0,minStock:0,
+        active:document.getElementById('pf_active').classList.contains('on')};
+      if(editingId) Store.updateProduct(editingId,dv,function(){ toast('Atualizado','ok'); });
+      else Store.addProduct(dv,function(){ toast('Linha de fornecedor cadastrada','ok'); });
+      closeSheet('sheetProduct'); renderProductList(); return;
+    }
+    var data={name:name,category:document.getElementById('pf_cat').value,tipo:'unidade',
+      fornecedor:'',comissao:0,
       cost:parseNum(document.getElementById('pf_cost').value),
       price:parseNum(document.getElementById('pf_price').value),
       stock:Math.round(parseNum(document.getElementById('pf_stock').value)),
@@ -1761,12 +1906,12 @@ var App = (function(){
 
     var maxPay=1; PAY_METHODS.forEach(function(m){ if(byPay[m.id]>maxPay) maxPay=byPay[m.id]; });
     var ps=Store.getProducts();
-    var lowList=ps.filter(function(p){ return p.active!==false && p.stock<=(p.minStock||0); })
+    var lowList=ps.filter(function(p){ return p.active!==false && p.tipo!=='valor' && p.stock<=(p.minStock||0); })
       .sort(function(a,b){ return a.stock-b.stock; });
 
     // dinheiro parado em mercadoria
     var custoEstoque=0, vendaEstoque=0;
-    ps.forEach(function(p){ if(p.active===false) return;
+    ps.forEach(function(p){ if(p.active===false||p.tipo==='valor') return;
       custoEstoque+=(p.cost||0)*p.stock; vendaEstoque+=p.price*p.stock; });
 
     var h='';
@@ -1873,6 +2018,34 @@ var App = (function(){
       '<div class="bar-row" style="border-top:1px solid var(--line);padding-top:9px;margin-top:4px">'+
       '<span class="bl"><b>Faturado</b></span><span class="bt"></span><span class="bv"><b>R$ '+money(faturado)+'</b></span></div>'+
       '</div><div class="muted" style="margin-top:8px">Fiado total em aberto (todos os dias): <b>R$ '+money(totalOwed())+'</b></div></div>';
+
+    // acerto por fornecedor (linhas vendidas por valor)
+    var forn={};
+    ts.forEach(function(s){
+      (s.items||[]).forEach(function(it){
+        if(!it.porValor) return;
+        var k=it.fornecedor||it.name||'Sem fornecedor';
+        if(!forn[k]) forn[k]={vendido:0,meu:0};
+        forn[k].vendido+=it.price;
+        forn[k].meu+=(it.price-(it.cost||0));
+      });
+    });
+    var chaves=Object.keys(forn).sort(function(a,b){ return forn[b].vendido-forn[a].vendido; });
+    if(chaves.length){
+      var tv=0,tm=0; chaves.forEach(function(k){ tv+=forn[k].vendido; tm+=forn[k].meu; });
+      h+='<div class="card"><h4>Acerto por fornecedor — '+periodoLabel()+'</h4><ul class="minilist">'+
+        chaves.map(function(k){
+          var f=forn[k];
+          return '<li style="display:block;padding:10px 2px">'+
+            '<div style="display:flex;justify-content:space-between"><b>'+esc(k)+'</b>'+
+            '<span class="qt">R$ '+money(f.vendido)+'</span></div>'+
+            '<div class="muted" style="margin-top:2px">meu R$ '+money(f.meu)+
+            ' · repassar R$ '+money(f.vendido-f.meu)+'</div></li>';
+        }).join('')+
+        '<li style="border-top:2px solid var(--line);padding-top:9px"><b>Total</b>'+
+        '<span class="qt">R$ '+money(tv)+' · meu R$ '+money(tm)+'</span></li>'+
+        '</ul></div>';
+    }
 
     h+='<div class="card"><h4>Por operador (vendas)</h4>';
     var ops=Object.keys(byOp);
@@ -2085,6 +2258,7 @@ var App = (function(){
     setReceiveMethod:setReceiveMethod,savePayment:savePayment,shareCaixa:shareCaixa,
     openCobrar:openCobrar,salvarMsg:salvarMsg,restaurarMsg:restaurarMsg,excluirCustomer:excluirCustomer,seedCustomers:seedCustomers,liberar:liberar,mudarPapel:mudarPapel,abrirCadastro:abrirCadastro,fecharCadastro:fecharCadastro,criarAcesso:criarAcesso,
     openProductForm:openProductForm,saveProduct:saveProduct,deleteProduct:deleteProduct,calcMargem:calcMargem,
+    abrirValor:abrirValor,setValor:setValor,previewValor:previewValor,confirmarValor:confirmarValor,tirarValor:tirarValor,toggleTipo:toggleTipo,
     cancelSale:cancelSale,setPeriodo:setPeriodo,openSettings:openSettings,addUser:addUser,removeUser:removeUser,resetPin:resetPin,seedProducts:seedProducts,
     toggleEl:toggleEl,closeSheet:closeSheet,toast:toast};
 })();
