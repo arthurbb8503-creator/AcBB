@@ -476,7 +476,8 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
         <div class="muted" style="margin-bottom:10px">Vale para todo mundo. Estas etiquetas são trocadas na hora do envio:
           <b>{nome}</b>, <b>{valor}</b>, <b>{extrato}</b> (lista das compras), <b>{pix}</b>.</div>
         <div class="field"><label>Texto padrão</label><textarea id="cfg_msg" rows="8"></textarea></div>
-        <div class="field"><label>Chave Pix (opcional)</label><input id="cfg_pix" placeholder="telefone, CPF ou e-mail"></div>
+        <div class="field"><label>Chave Pix ou código copia e cola</label><input id="cfg_pix" placeholder="e-mail, telefone, CPF ou código completo" oninput="App.avisoPix()"></div>
+        <div id="cfg_pix_aviso" class="muted" style="margin:-6px 0 12px"></div>
         <div class="btn-row" style="margin-top:0">
           <button class="btn ghost" onclick="App.restaurarMsg()">Restaurar padrão</button>
           <button class="btn primary" onclick="App.salvarMsg()">Salvar</button>
@@ -491,6 +492,19 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
         <h4>Lista inicial de produtos</h4>
         <div class="muted" style="margin-bottom:10px">Cadastra os 6 itens da compra inicial (jujuba, serenata, pirulitos, bala de iogurte, pipoca). Só cria os que ainda não existem — pode clicar sem medo.</div>
         <button class="btn ghost" onclick="App.seedProducts()">Cadastrar lista inicial</button>
+      </div>
+      <div class="card" id="limpezaCard" style="border-color:#f0d0cc;background:#fffaf9">
+        <h4 style="color:var(--danger)">Limpar dados</h4>
+        <div class="muted" style="margin-bottom:10px">Para começar um evento novo do zero. <b>Não dá para desfazer.</b> A equipe, as senhas e a mensagem de cobrança não são tocadas.</div>
+        <div class="field"><label>Apagar vendas e pagamentos ANTES de</label>
+          <input id="lp_data" type="date" onchange="App.previewLimpeza()"></div>
+        <div id="lp_preview" class="muted" style="margin:-4px 0 12px"></div>
+        <button class="btn ghost" style="color:var(--danger)" onclick="App.limparHistorico()">Apagar histórico anterior à data</button>
+        <div style="height:1px;background:var(--line);margin:14px 0"></div>
+        <div class="btn-row" style="margin-top:0">
+          <button class="btn ghost" style="font-size:14px" onclick="App.limparCustomers()">Apagar pessoas do fiado</button>
+          <button class="btn ghost" style="font-size:14px" onclick="App.limparProdutos()">Apagar produtos</button>
+        </div>
       </div>
       <div class="card" id="teamCard">
         <h4>Equipe</h4>
@@ -531,7 +545,7 @@ var FIREBASE_CONFIG = {
    confere se o celular está rodando o arquivo novo ou um velho
    preso no cache.
    ============================================================ */
-var APP_VERSION = '2.4';
+var APP_VERSION = '2.7';
 
 /* ============================================================
    PAPÉIS
@@ -1050,6 +1064,58 @@ var Store = (function(){
     cbP(products); done&&done(faltam.length);
   }
 
+  /* ---- limpeza de histórico ---- */
+  function contarAntesDe(ms){
+    var v=0,p=0,semData=0;
+    sales.forEach(function(s){ var t=toMillis(s); if(!t) semData++; else if(t<ms) v++; });
+    payments.forEach(function(x){ var t=toMillis(x); if(t && t<ms) p++; });
+    return {vendas:v, pagamentos:p, semData:semData};
+  }
+  function apagarAntesDe(ms,done){
+    var alvoV=sales.filter(function(s){ var t=toMillis(s); return t && t<ms; });
+    var alvoP=payments.filter(function(x){ var t=toMillis(x); return t && t<ms; });
+    if(mode==='firebase'){
+      var docs=alvoV.map(function(s){ return ['sales',s.id]; })
+              .concat(alvoP.map(function(x){ return ['payments',x.id]; }));
+      var i=0;
+      while(i<docs.length){                       // lotes de 400 (limite do batch é 500)
+        var b=db.batch();
+        docs.slice(i,i+400).forEach(function(d){ b.delete(db.collection(d[0]).doc(d[1])); });
+        b.commit().catch(erro); i+=400;
+      }
+    }
+    var idsV={}; alvoV.forEach(function(s){ idsV[s.id]=1; });
+    var idsP={}; alvoP.forEach(function(x){ idsP[x.id]=1; });
+    sales=sales.filter(function(s){ return !idsV[s.id]; });
+    payments=payments.filter(function(x){ return !idsP[x.id]; });
+    cbS(sales); cbPay(payments);
+    done&&done(alvoV.length,alvoP.length);
+  }
+  function apagarTodosCustomers(done){
+    var alvo=customers.slice();
+    if(mode==='firebase'){
+      var i=0;
+      while(i<alvo.length){
+        var b=db.batch();
+        alvo.slice(i,i+400).forEach(function(c){ b.delete(db.collection('customers').doc(c.id)); });
+        b.commit().catch(erro); i+=400;
+      }
+    }
+    customers=[]; cbC(customers); done&&done(alvo.length);
+  }
+  function apagarTodosProdutos(done){
+    var alvo=products.slice();
+    if(mode==='firebase'){
+      var i=0;
+      while(i<alvo.length){
+        var b=db.batch();
+        alvo.slice(i,i+400).forEach(function(p){ b.delete(db.collection('products').doc(p.id)); });
+        b.commit().catch(erro); i+=400;
+      }
+    }
+    products=[]; cbP(products); done&&done(alvo.length);
+  }
+
   function getConfig(){ return config; }
   function saveConfig(patch,done){
     for(var k in patch) config[k]=patch[k];
@@ -1059,6 +1125,8 @@ var Store = (function(){
 
   return {init:init,onProducts:onProducts,onSales:onSales,onUsers:onUsers,onCustomers:onCustomers,onPayments:onPayments,onConfig:onConfig,
     getConfig:getConfig,saveConfig:saveConfig,
+    contarAntesDe:contarAntesDe,apagarAntesDe:apagarAntesDe,
+    apagarTodosCustomers:apagarTodosCustomers,apagarTodosProdutos:apagarTodosProdutos,
     getProducts:getProducts,getSales:getSales,getUsers:getUsers,getCustomers:getCustomers,getPayments:getPayments,
     getMode:getMode,isOnline:isOnline,
     addProduct:addProduct,updateProduct:updateProduct,removeProduct:removeProduct,
@@ -1561,7 +1629,7 @@ var App = (function(){
     var evs=[];
     fiadoSalesOf(c.id).forEach(function(s){
       evs.push({t:toMillis(s),kind:'buy',v:s.total,
-        title:(s.items||[]).map(function(i){return i.qty+'× '+i.name;}).join(', '),
+        title:(s.items||[]).map(function(i){return i.qty+'× '+nomeAtual(i);}).join(', '),
         sub:fmtDay(s)+' às '+fmtTime(s)+' · '+(s.sellerName||'—'), id:s.id});
     });
     paymentsOf(c.id).forEach(function(p){
@@ -1584,7 +1652,10 @@ var App = (function(){
     }
     h+='<div class="btn-row">'+
        '<button class="btn ghost" onclick="App.openEditCustomer(\''+c.id+'\')">Editar dados</button>'+
-       '<button class="btn ghost" onclick="App.openCobrar(\''+c.id+'\')">'+(b>0.009?'Cobrar no WhatsApp':'Enviar resumo')+'</button></div>';
+       '<button class="btn ghost" onclick="App.openCobrar(\''+c.id+'\')">'+(b>0.009?(ehCopiaECola(Store.getConfig().chavePix)?'1️⃣ Cobrar':'Cobrar no WhatsApp'):'Enviar resumo')+'</button></div>';
+    if(b>0.009 && ehCopiaECola(Store.getConfig().chavePix)){
+      h+='<div class="btn-row"><button class="btn ghost" onclick="App.enviarPix(\''+c.id+'\')">2️⃣ Enviar código Pix (mensagem separada)</button></div>';
+    }
     if(!soOlha() && fiadoSalesOf(c.id).length===0 && paymentsOf(c.id).length===0){
       h+='<div class="btn-row"><button class="btn ghost" style="color:var(--danger)" onclick="App.excluirCustomer(\''+c.id+'\')">Excluir da lista</button></div>';
     }
@@ -1675,11 +1746,15 @@ var App = (function(){
     if(d.length===12||d.length===13) return d;
     return '';
   }
+  function nomeAtual(it){
+    var p=prodById(it.id);
+    return p? p.name : it.name;   // renomear o produto corrige o texto da cobrança
+  }
   function extratoDe(cid){
     var L=[];
     fiadoSalesOf(cid).sort(function(a,z){return toMillis(a)-toMillis(z);}).forEach(function(s){
       L.push(fmtDay(s)+' '+fmtTime(s)+' - R$ '+money(s.total));
-      L.push('   '+(s.items||[]).map(function(i){return i.qty+'x '+i.name;}).join(', '));
+      L.push('   '+(s.items||[]).map(function(i){return i.qty+'x '+nomeAtual(i);}).join(', '));
     });
     var ps=paymentsOf(cid).sort(function(a,z){return toMillis(a)-toMillis(z);});
     if(ps.length){
@@ -1697,6 +1772,17 @@ var App = (function(){
       .split('{extrato}').join(extratoDe(c.id))
       .split('{pix}').join(pix);
   }
+  function ehCopiaECola(k){ return (k||'').replace(/\s/g,'').length>40; }
+  function enviarPix(cid){
+    var c=custById(cid); if(!c) return;
+    var cod=(Store.getConfig().chavePix||'').trim();
+    if(!cod){ toast('Cadastre a chave Pix em ⚙︎','err'); return; }
+    var num=waNumero(c.phone);
+    if(num){ window.location.href='https://wa.me/'+num+'?text='+encodeURIComponent(cod); return; }
+    if(navigator.clipboard){ navigator.clipboard.writeText(cod); toast('Código Pix copiado','ok'); }
+    else { alert(cod); }
+  }
+
   var cobrandoId=null;
   function openCobrar(cid){
     var c=custById(cid); if(!c) return;
@@ -2134,11 +2220,67 @@ var App = (function(){
     });
   }
 
+  function avisoPix(){
+    var el=document.getElementById('cfg_pix_aviso'); if(!el) return;
+    var v=document.getElementById('cfg_pix').value;
+    if(ehCopiaECola(v)){
+      el.innerHTML='<b style="color:var(--warn)">Isso é um código copia e cola.</b> '+
+        'Ele precisa ir sozinho numa mensagem, senão o banco recusa. '+
+        'Tire o <b>{pix}</b> do texto acima — a caderneta ganha um botão para enviá-lo separado.';
+    } else if(v.trim()){
+      el.innerHTML='Chave simples: pode usar <b>{pix}</b> dentro do texto normalmente.';
+    } else { el.innerHTML=''; }
+  }
+  /* ---------- LIMPEZA ---------- */
+  function dataCorteMs(){
+    var v=document.getElementById('lp_data').value;   // AAAA-MM-DD
+    if(!v) return 0;
+    var p=v.split('-');
+    return new Date(+p[0], +p[1]-1, +p[2], 0, 0, 0).getTime();  // meia-noite local
+  }
+  function previewLimpeza(){
+    var el=document.getElementById('lp_preview'); if(!el) return;
+    var ms=dataCorteMs();
+    if(!ms){ el.textContent='Escolha uma data.'; return; }
+    var c=Store.contarAntesDe(ms);
+    var d=new Date(ms);
+    el.innerHTML='Serão apagadas <b>'+c.vendas+' venda(s)</b> e <b>'+c.pagamentos+' pagamento(s)</b> feitos antes de '+
+      ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear()+'.'+
+      (c.semData? '<br><span style="color:var(--warn)">'+c.semData+' registro(s) sem data não serão tocados.</span>':'');
+  }
+  function limparHistorico(){
+    var ms=dataCorteMs();
+    if(!ms){ toast('Escolha a data','err'); return; }
+    var c=Store.contarAntesDe(ms);
+    if(c.vendas+c.pagamentos===0){ toast('Nada para apagar nesse período','ok'); return; }
+    var d=new Date(ms);
+    var txt='Apagar '+c.vendas+' venda(s) e '+c.pagamentos+' pagamento(s) anteriores a '+
+      ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear()+'?\n\nIsso não pode ser desfeito.';
+    if(!confirm(txt)) return;
+    if(!confirm('Confirma mesmo? Os dados somem para todos os celulares.')) return;
+    Store.apagarAntesDe(ms,function(v,p){
+      toast(v+' vendas e '+p+' pagamentos apagados','ok');
+      previewLimpeza(); refresh();
+    });
+  }
+  function limparCustomers(){
+    var n=Store.getCustomers().length;
+    if(n===0){ toast('Não há pessoas cadastradas','ok'); return; }
+    if(!confirm('Apagar as '+n+' pessoas do fiado?\n\nSe ainda houver dívida em aberto, o registro dela some junto.')) return;
+    Store.apagarTodosCustomers(function(k){ toast(k+' pessoas apagadas','ok'); refresh(); });
+  }
+  function limparProdutos(){
+    var n=Store.getProducts().length;
+    if(n===0){ toast('Não há produtos cadastrados','ok'); return; }
+    if(!confirm('Apagar os '+n+' produtos?\n\nAs vendas já feitas continuam no caixa, com nome e preço da época.')) return;
+    Store.apagarTodosProdutos(function(k){ toast(k+' produtos apagados','ok'); renderProductList(); refresh(); });
+  }
+
   function salvarMsg(){
     Store.saveConfig({
       msgCobranca:document.getElementById('cfg_msg').value,
       chavePix:document.getElementById('cfg_pix').value.trim()
-    },function(){ toast('Mensagem salva','ok'); });
+    },function(){ toast('Mensagem salva','ok'); avisoPix(); renderFiado(); });
   }
   function restaurarMsg(){
     document.getElementById('cfg_msg').value=MSG_COBRANCA_PADRAO;
@@ -2150,6 +2292,7 @@ var App = (function(){
     var cfg=Store.getConfig();
     document.getElementById('cfg_msg').value=cfg.msgCobranca||MSG_COBRANCA_PADRAO;
     document.getElementById('cfg_pix').value=cfg.chavePix||'';
+    avisoPix();
     var info=document.getElementById('connInfo');
     var ver='<br>Versão do app: <b>'+APP_VERSION+'</b>';
     if(Store.getMode()==='firebase'){
@@ -2159,7 +2302,14 @@ var App = (function(){
       info.innerHTML='🟡 <b>Modo demonstração</b>'+ver+'<br>Dados ficam só neste aparelho e somem ao recarregar.<br>'+
         'Cole a config do Firebase no topo do arquivo para usar entre vários celulares.';
     }
-    document.getElementById('teamCard').style.display=(me&&me.role==='admin')?'block':'none';
+    var ehAdmin=(me&&me.role==='admin');
+    document.getElementById('teamCard').style.display=ehAdmin?'block':'none';
+    document.getElementById('limpezaCard').style.display=ehAdmin?'block':'none';
+    if(ehAdmin && !document.getElementById('lp_data').value){
+      var hj=new Date();
+      document.getElementById('lp_data').value=hj.getFullYear()+'-'+('0'+(hj.getMonth()+1)).slice(-2)+'-'+('0'+hj.getDate()).slice(-2);
+    }
+    if(ehAdmin) previewLimpeza();
     renderTeam();
     document.getElementById('sheetSettings').classList.add('show');
   }
@@ -2256,7 +2406,8 @@ var App = (function(){
     renderPickCustomer:renderPickCustomer,chooseCustomer:chooseCustomer,openNewCustomer:openNewCustomer,saveCustomer:saveCustomer,
     renderFiado:renderFiado,openCustomer:openCustomer,openEditCustomer:openEditCustomer,openReceive:openReceive,setReceive:setReceive,
     setReceiveMethod:setReceiveMethod,savePayment:savePayment,shareCaixa:shareCaixa,
-    openCobrar:openCobrar,salvarMsg:salvarMsg,restaurarMsg:restaurarMsg,excluirCustomer:excluirCustomer,seedCustomers:seedCustomers,liberar:liberar,mudarPapel:mudarPapel,abrirCadastro:abrirCadastro,fecharCadastro:fecharCadastro,criarAcesso:criarAcesso,
+    openCobrar:openCobrar,enviarPix:enviarPix,avisoPix:avisoPix,salvarMsg:salvarMsg,
+    previewLimpeza:previewLimpeza,limparHistorico:limparHistorico,limparCustomers:limparCustomers,limparProdutos:limparProdutos,restaurarMsg:restaurarMsg,excluirCustomer:excluirCustomer,seedCustomers:seedCustomers,liberar:liberar,mudarPapel:mudarPapel,abrirCadastro:abrirCadastro,fecharCadastro:fecharCadastro,criarAcesso:criarAcesso,
     openProductForm:openProductForm,saveProduct:saveProduct,deleteProduct:deleteProduct,calcMargem:calcMargem,
     abrirValor:abrirValor,setValor:setValor,previewValor:previewValor,confirmarValor:confirmarValor,tirarValor:tirarValor,toggleTipo:toggleTipo,
     cancelSale:cancelSale,setPeriodo:setPeriodo,openSettings:openSettings,addUser:addUser,removeUser:removeUser,resetPin:resetPin,seedProducts:seedProducts,
