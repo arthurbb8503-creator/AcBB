@@ -180,8 +180,9 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
   </div>
 
   <div id="areaCadastro" class="hidden">
-    <div class="field"><label>Seu nome</label><input id="rg_nome" placeholder="Como te chamam"></div>
-    <div class="field"><label>O que você vende</label><input id="rg_prod" placeholder="Ex: Churrasquinho, Bolos da Dona Ana"></div>
+    <div class="field"><label>Nome da barraca ou do prestador</label>
+      <input id="rg_nome" placeholder="Ex: Churrasquinho do Zé"></div>
+    <div class="muted" style="margin:-4px 0 12px">É este nome que vai aparecer no seu acesso e nos relatórios.</div>
     <div class="field"><label>Crie uma senha de 4 dígitos</label>
       <input id="rg_pin" inputmode="numeric" maxlength="4" placeholder="0000"></div>
     <div class="muted" style="margin:-4px 0 12px">Anote a senha. Você vai usar ela toda vez que abrir.</div>
@@ -201,15 +202,13 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
 
   <!-- VENDER (fornecedor) -->
   <div id="view-vender" class="view hidden">
-    <div class="meuprod"><div class="lb">Você está vendendo</div><div class="nm" id="meuProduto">—</div></div>
+    <div class="meuprod"><div class="lb">Lançar venda</div><div class="nm" id="meuProduto">—</div></div>
+    <div class="chips" id="chipsDia"></div>
     <div class="visor"><div class="cifra">R$</div><div class="val zero" id="visor">0,00</div></div>
     <div class="atalhos" id="atalhos"></div>
     <div class="teclado" id="teclado"></div>
-    <button class="btn ok" id="btnRegistrar" onclick="App.registrarVenda()">Registrar venda</button>
-    <div class="resumo" style="margin-top:14px">
-      <div class="box"><div class="lb">Hoje</div><div class="vl" id="meuHoje">R$ 0,00</div></div>
-      <div class="box"><div class="lb">Vendas</div><div class="vl" id="meuQtd">0</div></div>
-    </div>
+    <button class="btn ok" id="btnRegistrar" onclick="App.registrarVenda()">Lançar</button>
+    <div id="jaLancado" class="card" style="margin-top:14px"></div>
   </div>
 
   <!-- MINHAS VENDAS (fornecedor) -->
@@ -251,8 +250,8 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
       <div class="card"><h4>Conexão</h4><div id="connInfo" class="muted"></div></div>
 
       <div class="card" id="cardMeuProd">
-        <h4>Meu produto</h4>
-        <div class="field"><label>O que você vende</label><input id="cfg_prod"></div>
+        <h4>Meu nome</h4>
+        <div class="field"><label>Nome da barraca ou prestador</label><input id="cfg_prod"></div>
         <button class="btn ghost" onclick="App.salvarMeuProduto()">Salvar</button>
       </div>
 
@@ -273,13 +272,6 @@ input,select{font-family:inherit;font-size:16px;max-width:100%}
         <button class="btn ghost" onclick="App.salvarComissao()">Salvar</button>
       </div>
 
-      <div class="card" id="cardLimpeza" style="border-color:#f0d0cc;background:#fffaf9">
-        <h4 style="color:var(--danger)">Limpar dados</h4>
-        <div class="muted" style="margin-bottom:10px">Apaga vendas antigas. <b>Não dá para desfazer.</b> Contas e senhas não são tocadas.</div>
-        <div class="field"><label>Apagar vendas ANTES de</label><input id="lp_data" type="date" onchange="App.previewLimpeza()"></div>
-        <div id="lp_preview" class="muted" style="margin:-4px 0 12px"></div>
-        <button class="btn ghost" style="color:var(--danger)" onclick="App.limparHistorico()">Apagar vendas anteriores</button>
-      </div>
 
       <button class="btn ghost" onclick="App.logout()">Sair</button>
     </div>
@@ -301,7 +293,7 @@ var FIREBASE_CONFIG = {
   appId: "1:737925800815:web:cef086b646263df3e27e9a"
 };
 
-var APP_VERSION = '3.0';
+var APP_VERSION = '4.0';
 
 /* Conta master inicial. Só é criada se não houver NENHUM usuário. */
 var SEED_USERS = [ {name:'Arthur', pin:'0611', role:'master'} ];
@@ -317,6 +309,7 @@ function norm(s){ return (s||'').toString().toLowerCase().normalize('NFD').repla
 function dayKey(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
 function tsDate(o){
   if(!o) return null;
+  if(o.refAt) return new Date(o.refAt);   // dia a que o lançamento se refere
   if(o.createdAt && o.createdAt.toDate) return o.createdAt.toDate();
   if(o.createdAt instanceof Date) return o.createdAt;
   if(o.localAt) return new Date(o.localAt);
@@ -469,31 +462,11 @@ var Store=(function(){
     cbC(config); done&&done();
   }
 
-  function contarAntesDe(ms){
-    var n=0,sd=0;
-    sales.forEach(function(s){ var t=toMillis(s); if(!t) sd++; else if(t<ms) n++; });
-    return {vendas:n, semData:sd};
-  }
-  function apagarAntesDe(ms,done){
-    var alvo=sales.filter(function(s){ var t=toMillis(s); return t && t<ms; });
-    if(mode==='firebase'){
-      var i=0;
-      while(i<alvo.length){
-        var b=db.batch();
-        alvo.slice(i,i+400).forEach(function(s){ b.delete(db.collection(COL_SALES).doc(s.id)); });
-        b.commit().catch(erro); i+=400;
-      }
-    }
-    var ids={}; alvo.forEach(function(s){ ids[s.id]=1; });
-    sales=sales.filter(function(s){ return !ids[s.id]; });
-    cbS(sales); done&&done(alvo.length);
-  }
 
   return {init:init,onUsers:onUsers,onSales:onSales,onConfig:onConfig,
     getUsers:getUsers,getSales:getSales,getConfig:getConfig,getMode:getMode,isOnline:isOnline,
     addUser:addUser,updateUser:updateUser,removeUser:removeUser,
-    addSale:addSale,cancelSale:cancelSale,saveConfig:saveConfig,
-    contarAntesDe:contarAntesDe,apagarAntesDe:apagarAntesDe};
+    addSale:addSale,cancelSale:cancelSale,saveConfig:saveConfig};
 })();
 
 /* ============================================================
@@ -505,7 +478,8 @@ var App=(function(){
   var conectado=false, watchdog=null;
   var periodo='hoje';   // hoje | ontem | anteontem | 7d | tudo
 
-  var PERIODOS=[['hoje','Hoje'],['ontem','Ontem'],['anteontem','Anteontem'],['7d','7 dias'],['tudo','Tudo']];
+  var PERIODOS=[['hoje','Hoje'],['ontem','Ontem'],['ate-ontem','Até ontem'],['tudo','Todo o período']];
+  var diaLanc='hoje';   // a qual dia o lançamento se refere
 
   function boot(){
     document.getElementById('loginVer').textContent='versão '+APP_VERSION;
@@ -549,7 +523,7 @@ var App=(function(){
     el.innerHTML=us.map(function(u){
       return '<button onclick="App.pickUser(\''+u.id+'\')">'+
         '<span class="av">'+esc((u.name||'?').charAt(0).toUpperCase())+'</span>'+esc(u.name)+
-        '<span class="pd">'+esc(ehMaster(u)?'master':(u.produto||'—'))+'</span></button>';
+        '<span class="pd">'+esc(ehMaster(u)?'master':'lançar vendas')+'</span></button>';
     }).join('');
   }
   function pickUser(id){
@@ -607,7 +581,6 @@ var App=(function(){
   function abrirCadastro(){
     ['userpick','linkCadastro','pinarea'].forEach(function(i){ document.getElementById(i).classList.add('hidden'); });
     document.getElementById('rg_nome').value='';
-    document.getElementById('rg_prod').value='';
     document.getElementById('rg_pin').value='';
     document.getElementById('areaCadastro').classList.remove('hidden');
   }
@@ -618,16 +591,14 @@ var App=(function(){
   }
   function criarAcesso(){
     var nome=document.getElementById('rg_nome').value.trim();
-    var prod=document.getElementById('rg_prod').value.trim();
     var pin=document.getElementById('rg_pin').value.replace(/\D/g,'');
-    if(!nome){ toast('Informe seu nome','err'); return; }
-    if(!prod){ toast('Informe o que você vende','err'); return; }
+    if(!nome){ toast('Informe o nome','err'); return; }
     if(pin.length!==4){ toast('A senha precisa ter 4 dígitos','err'); return; }
     var us=Store.getUsers();
     for(var i=0;i<us.length;i++){
       if(norm(us[i].name)===norm(nome)){ toast('Já existe alguém com esse nome','err'); return; }
     }
-    Store.addUser({name:nome,pin:pin,role:'vendedor',produto:prod,
+    Store.addUser({name:nome,pin:pin,role:'vendedor',produto:'',
       comissao:(Store.getConfig().comissaoPadrao||0),active:true},function(u){
       me=u; document.getElementById('areaCadastro').classList.add('hidden');
       toast('Tudo pronto, '+nome+'!','ok'); entrar();
@@ -639,7 +610,7 @@ var App=(function(){
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     document.getElementById('whoName').textContent=me.name;
-    document.getElementById('whoRole').textContent=ehMaster(me)?'Master':(me.produto||'');
+    document.getElementById('whoRole').textContent=ehMaster(me)?'Master':'Fornecedor';
     montarNav();
     tab(ehMaster(me)?'painel':'vender');
   }
@@ -690,12 +661,8 @@ var App=(function(){
     var k=dayKey(d), hoje=new Date();
     if(periodo==='hoje') return k===dayKey(hoje);
     if(periodo==='ontem') return k===dayKey(new Date(hoje.getTime()-864e5));
-    if(periodo==='anteontem') return k===dayKey(new Date(hoje.getTime()-2*864e5));
-    if(periodo==='7d'){
-      var ini=new Date(hoje.getFullYear(),hoje.getMonth(),hoje.getDate()-6);
-      return d>=ini;
-    }
-    return true;
+    if(periodo==='ate-ontem') return k<dayKey(hoje);     // tudo antes de hoje
+    return true;                                        // todo o período
   }
   function vendasPeriodo(){ return Store.getSales().filter(function(s){ return !s.canceled && noPeriodo(s); }); }
 
@@ -707,8 +674,8 @@ var App=(function(){
   }
   function nomeFornecedor(s){
     var us=Store.getUsers();
-    for(var i=0;i<us.length;i++){ if(us[i].id===s.sellerId) return us[i].produto||us[i].name; }
-    return s.produto||s.sellerName||'—';
+    for(var i=0;i<us.length;i++){ if(us[i].id===s.sellerId) return us[i].name; }
+    return s.sellerName||s.produto||'—';
   }
 
   /* ---------- VENDER ---------- */
@@ -741,15 +708,25 @@ var App=(function(){
     document.getElementById('btnRegistrar').disabled = v<=0;
   }
   var salvando=false;
+  function setDiaLanc(d){ diaLanc=d; renderVender(); }
+  function refDoDia(){
+    if(diaLanc==='ontem'){
+      var o=new Date(Date.now()-864e5);
+      return new Date(o.getFullYear(),o.getMonth(),o.getDate(),20,0,0).getTime();
+    }
+    return Date.now();
+  }
   function registrarVenda(){
-    if(ehMaster(me)){ toast('Contas master não registram venda','err'); return; }
+    if(ehMaster(me)){ toast('Contas master não lançam venda','err'); return; }
     var v=valorDigitado();
     if(v<=0){ toast('Digite o valor','err'); return; }
     if(salvando) return;
+    var rot=(diaLanc==='ontem'?'ontem':'hoje');
+    if(!confirm('Lançar R$ '+money(v)+' referente a '+rot+'?')) return;
     salvando=true;
-    Store.addSale({valor:v, sellerId:me.id, sellerName:me.name, produto:me.produto||''},function(){
+    Store.addSale({valor:v, sellerId:me.id, sellerName:me.name, refAt:refDoDia()},function(){
       salvando=false; digitado=''; pintarVisor();
-      toast('R$ '+money(v)+' registrado ✓','ok');
+      toast('R$ '+money(v)+' lançado ('+rot+') ✓','ok');
       if(navigator.vibrate){ try{ navigator.vibrate(12); }catch(e){} }
       renderVender();
     });
@@ -757,13 +734,53 @@ var App=(function(){
   function minhasVendas(){
     return Store.getSales().filter(function(s){ return s.sellerId===me.id; });
   }
+  function porDiaHTML(lista,titulo){
+    var m={};
+    lista.forEach(function(s){
+      if(s.canceled) return;
+      var d=tsDate(s); if(!d) return;
+      var k=dayKey(d);
+      if(!m[k]) m[k]={t:0,n:0};
+      m[k].t+=s.valor||0; m[k].n++;
+    });
+    var dias=Object.keys(m).sort().reverse();
+    var maior=1; dias.forEach(function(k){ if(m[k].t>maior) maior=m[k].t; });
+    var soma=0; dias.forEach(function(k){ soma+=m[k].t; });
+    var h='<div class="card"><h4>'+titulo+'</h4>';
+    if(dias.length===0){ h+='<div class="muted">Nenhum lançamento ainda.</div></div>'; return h; }
+    h+=dias.slice(0,30).map(function(k){
+      return '<div class="linha"><div class="l-i"><div class="l-n">'+diaExtenso(k)+'</div>'+
+        '<div class="l-s">'+m[k].n+' lançamento(s)</div>'+
+        '<div class="barra"><i style="width:'+(m[k].t/maior*100)+'%"></i></div></div>'+
+        '<div class="l-v"><b>R$ '+money(m[k].t)+'</b></div></div>';
+    }).join('');
+    h+='<div class="linha" style="border-top:2px solid var(--line);margin-top:4px">'+
+      '<div class="l-i"><div class="l-n">Total geral</div></div>'+
+      '<div class="l-v"><b>R$ '+money(soma)+'</b></div></div></div>';
+    return h;
+  }
+
   function renderVender(){
     pintarVisor();
-    var hj=dayKey(new Date());
-    var ms=minhasVendas().filter(function(s){ return !s.canceled && tsDate(s) && dayKey(tsDate(s))===hj; });
+    document.getElementById('meuProduto').textContent=me.name;
+    document.getElementById('chipsDia').innerHTML=
+      [['hoje','Referente a HOJE'],['ontem','Referente a ONTEM']].map(function(d){
+        return '<button class="chip'+(diaLanc===d[0]?' active':'')+'" onclick="App.setDiaLanc(\''+d[0]+'\')">'+d[1]+'</button>';
+      }).join('');
+    document.getElementById('btnRegistrar').textContent='Lançar ('+(diaLanc==='ontem'?'ontem':'hoje')+')';
+
+    var alvo=diaLanc==='ontem'? dayKey(new Date(Date.now()-864e5)) : dayKey(new Date());
+    var ms=minhasVendas().filter(function(s){ return !s.canceled && tsDate(s) && dayKey(tsDate(s))===alvo; });
     var t=0; ms.forEach(function(s){ t+=s.valor||0; });
-    document.getElementById('meuHoje').textContent='R$ '+money(t);
-    document.getElementById('meuQtd').textContent=ms.length;
+    var el=document.getElementById('jaLancado');
+    if(ms.length===0){
+      el.innerHTML='<div class="muted center">Nada lançado ainda para '+(diaLanc==='ontem'?'ontem':'hoje')+'.</div>';
+    } else {
+      el.innerHTML='<h4>Já lançado '+(diaLanc==='ontem'?'ontem':'hoje')+'</h4>'+
+        '<div class="linha" style="border:none;padding:4px 2px"><div class="l-i">'+
+        '<div class="l-n">R$ '+money(t)+'</div><div class="l-s">'+ms.length+' lançamento(s)</div></div></div>'+
+        '<div class="muted">Se você lançar de novo, o valor <b>soma</b> a este. Para corrigir, cancele em Minhas vendas.</div>';
+    }
   }
   function renderMinhas(){
     document.getElementById('chipsMinhas').innerHTML=chipsHTML();
@@ -772,7 +789,9 @@ var App=(function(){
     var t=0; ativas.forEach(function(s){ t+=s.valor||0; });
     var h='<div class="resumo"><div class="box"><div class="lb">'+periodoLabel()+'</div>'+
       '<div class="vl">R$ '+money(t)+'</div></div>'+
-      '<div class="box"><div class="lb">Vendas</div><div class="vl">'+ativas.length+'</div></div></div>';
+      '<div class="box"><div class="lb">Lançamentos</div><div class="vl">'+ativas.length+'</div></div></div>';
+    h+=porDiaHTML(minhasVendas(),'Meu total por dia');
+    h+='<div class="section-title" style="margin-top:6px">Lançamentos — '+periodoLabel()+'</div>';
     if(lista.length===0){ h+='<div class="empty"><div class="em">🧾</div>Nenhuma venda '+periodoLabel()+'.</div>'; }
     else{
       h+=lista.slice(0,200).map(function(s){
@@ -817,33 +836,7 @@ var App=(function(){
       '<div class="kpi"><div class="k-label">Fornecedores ativos</div><div class="k-val">'+chaves.length+'</div></div>'+
     '</div>';
 
-    // por dia — o acompanhamento que faltava
-    var porDia={};
-    Store.getSales().forEach(function(s){
-      if(s.canceled) return;
-      var d=tsDate(s); if(!d) return;
-      var k=dayKey(d);
-      if(!porDia[k]) porDia[k]={total:0,n:0};
-      porDia[k].total+=s.valor||0; porDia[k].n++;
-    });
-    var dias=Object.keys(porDia).sort().reverse().slice(0,14);
-    var maiorDia=1; dias.forEach(function(k){ if(porDia[k].total>maiorDia) maiorDia=porDia[k].total; });
-    h+='<div class="card"><h4>Por dia</h4>';
-    if(dias.length===0){ h+='<div class="muted">Nenhuma venda registrada ainda.</div>'; }
-    else{
-      var somaGeral=0; Object.keys(porDia).forEach(function(k){ somaGeral+=porDia[k].total; });
-      h+=dias.map(function(k){
-        var d=porDia[k];
-        return '<div class="linha"><div class="l-i"><div class="l-n">'+diaExtenso(k)+'</div>'+
-          '<div class="l-s">'+d.n+' venda(s)</div>'+
-          '<div class="barra"><i style="width:'+(d.total/maiorDia*100)+'%"></i></div></div>'+
-          '<div class="l-v"><b>R$ '+money(d.total)+'</b></div></div>';
-      }).join('');
-      h+='<div class="linha" style="border-top:2px solid var(--line);margin-top:4px">'+
-        '<div class="l-i"><div class="l-n">Total geral</div></div>'+
-        '<div class="l-v"><b>R$ '+money(somaGeral)+'</b></div></div>';
-    }
-    h+='</div>';
+    h+=porDiaHTML(Store.getSales(),'Por dia (todos os fornecedores)');
 
     // por fornecedor
     h+='<div class="card"><h4>Por fornecedor — '+periodoLabel()+'</h4>';
@@ -896,6 +889,7 @@ var App=(function(){
     var us=Store.getUsers().slice().sort(function(a,b){
       return (ehMaster(b)?1:0)-(ehMaster(a)?1:0) || a.name.localeCompare(b.name); });
     var todas=Store.getSales().filter(function(s){ return !s.canceled; });
+    var _unused=0;
     var h='<div class="muted" style="margin-bottom:12px">O percentual é aplicado na hora do relatório — pode ajustar quando quiser que os números se refazem.</div>';
     h+=us.map(function(u){
       var t=0,n=0;
@@ -907,17 +901,20 @@ var App=(function(){
           (u.id!==me.id? '<button class="v-x" onclick="App.removerUser(\''+u.id+'\')">remover</button>':'')+
           '</div></div>';
       }
-      return '<div class="card" style="padding:12px">'+
+      var inativo=(u.active===false);
+      return '<div class="card" style="padding:12px'+(inativo?';opacity:.55':'')+'">'+
         '<div class="linha" style="border:none;padding:0 0 8px">'+
-        '<div class="l-i"><div class="l-n">'+esc(u.produto||'(sem produto)')+'</div>'+
-        '<div class="l-s">'+esc(u.name)+' · '+n+' venda(s) no total</div></div>'+
+        '<div class="l-i"><div class="l-n">'+esc(u.name)+(inativo?' <span class="tagx">inativo</span>':'')+'</div>'+
+        '<div class="l-s">'+n+' lançamento(s) · senha '+(u.pin?'definida':'a criar')+'</div></div>'+
         '<div class="l-v"><b>R$ '+money(t)+'</b><span>comissão '+money(t*(Number(u.comissao)||0)/100)+'</span></div></div>'+
-        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+        '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+
         '<span class="muted">Comissão</span>'+
         '<input class="mini" inputmode="decimal" value="'+(u.comissao!=null?u.comissao:'')+'" onchange="App.setComissao(\''+u.id+'\',this.value)">'+
         '<span class="muted">%</span>'+
-        '<button class="r-edit" onclick="App.editarProduto(\''+u.id+'\')">produto</button>'+
-        '<button class="r-edit" onclick="App.zerarSenha(\''+u.id+'\')">zerar senha</button>'+
+        '<button class="r-edit" onclick="App.editarNome(\''+u.id+'\')">nome</button>'+
+        '<button class="r-edit" onclick="App.definirSenha(\''+u.id+'\')">senha</button>'+
+        '<button class="r-edit" onclick="App.zerarSenha(\''+u.id+'\')">zerar</button>'+
+        '<button class="r-edit" onclick="App.alternarAtivo(\''+u.id+'\')">'+(inativo?'reativar':'desativar')+'</button>'+
         '<button class="v-x" onclick="App.removerUser(\''+u.id+'\')">remover</button>'+
         '</div></div>';
     }).join('');
@@ -928,14 +925,40 @@ var App=(function(){
     if(n<0||n>100){ toast('Percentual entre 0 e 100','err'); renderForn(); return; }
     Store.updateUser(id,{comissao:n},function(){ toast('Comissão atualizada','ok'); renderForn(); refresh(); });
   }
-  function editarProduto(id){
-    var us=Store.getUsers(), u=null;
-    for(var i=0;i<us.length;i++){ if(us[i].id===id) u=us[i]; }
-    if(!u) return;
-    var novo=prompt('O que '+u.name+' vende?', u.produto||'');
+  function acharUser(id){
+    var us=Store.getUsers();
+    for(var i=0;i<us.length;i++){ if(us[i].id===id) return us[i]; }
+    return null;
+  }
+  function editarNome(id){
+    var u=acharUser(id); if(!u) return;
+    var novo=prompt('Nome da barraca ou prestador:', u.name||'');
     if(novo===null) return;
     novo=novo.trim(); if(!novo){ toast('Nome vazio','err'); return; }
-    Store.updateUser(id,{produto:novo},function(){ toast('Produto atualizado','ok'); renderForn(); refresh(); });
+    var us=Store.getUsers();
+    for(var i=0;i<us.length;i++){
+      if(us[i].id!==id && norm(us[i].name)===norm(novo)){ toast('Já existe esse nome','err'); return; }
+    }
+    Store.updateUser(id,{name:novo},function(){
+      if(me && me.id===id){ me.name=novo; document.getElementById('whoName').textContent=novo; }
+      toast('Nome atualizado','ok'); renderForn(); renderUserPicker(); refresh();
+    });
+  }
+  function definirSenha(id){
+    var u=acharUser(id); if(!u) return;
+    var novo=prompt('Nova senha de 4 dígitos para '+u.name+':','');
+    if(novo===null) return;
+    novo=String(novo).replace(/\D/g,'');
+    if(novo.length!==4){ toast('Precisa ter 4 dígitos','err'); return; }
+    Store.updateUser(id,{pin:novo},function(){ toast('Senha definida: '+novo,'ok'); renderForn(); });
+  }
+  function alternarAtivo(id){
+    var u=acharUser(id); if(!u) return;
+    var novo=(u.active===false);
+    if(!novo && !confirm('Desativar '+u.name+'?\n\nEla some da tela de entrada e não lança mais. Os lançamentos continuam nos relatórios.')) return;
+    Store.updateUser(id,{active:novo},function(){
+      toast(novo?'Reativado':'Desativado','ok'); renderForn(); renderUserPicker();
+    });
   }
   function zerarSenha(id){
     if(!confirm('Zerar a senha? A pessoa cria outra no próximo acesso.')) return;
@@ -976,9 +999,8 @@ var App=(function(){
     var master=ehMaster(me);
     document.getElementById('cardMaster').style.display=master?'block':'none';
     document.getElementById('cardComissao').style.display=master?'block':'none';
-    document.getElementById('cardLimpeza').style.display=master?'block':'none';
     document.getElementById('cardMeuProd').style.display=master?'none':'block';
-    if(!master) document.getElementById('cfg_prod').value=me.produto||'';
+    if(!master) document.getElementById('cfg_prod').value=me.name||'';
     document.getElementById('cfg_com').value=Store.getConfig().comissaoPadrao;
     var info=document.getElementById('connInfo');
     var ver='<br>Versão: <b>'+APP_VERSION+'</b>';
@@ -986,21 +1008,20 @@ var App=(function(){
       ? '🟢 <b>Online</b> · projeto '+esc(FIREBASE_CONFIG.projectId)+ver+
         '<br>Cache offline ativo: sem internet dá pra continuar registrando; sincroniza quando voltar.'
       : '🟡 <b>Modo demonstração</b>'+ver+'<br>Os dados somem ao recarregar.';
-    if(master && !document.getElementById('lp_data').value){
-      var hj=new Date();
-      document.getElementById('lp_data').value=dayKey(hj);
-    }
-    if(master) previewLimpeza();
     document.getElementById('sheetSettings').classList.add('show');
   }
   function salvarMeuProduto(){
     var v=document.getElementById('cfg_prod').value.trim();
-    if(!v){ toast('Informe o produto','err'); return; }
-    Store.updateUser(me.id,{produto:v},function(){
-      me.produto=v;
-      document.getElementById('whoRole').textContent=v;
+    if(!v){ toast('Informe o nome','err'); return; }
+    var us=Store.getUsers();
+    for(var i=0;i<us.length;i++){
+      if(us[i].id!==me.id && norm(us[i].name)===norm(v)){ toast('Já existe esse nome','err'); return; }
+    }
+    Store.updateUser(me.id,{name:v},function(){
+      me.name=v;
+      document.getElementById('whoName').textContent=v;
       document.getElementById('meuProduto').textContent=v;
-      toast('Atualizado','ok');
+      toast('Nome atualizado','ok');
     });
   }
   function criarMaster(){
@@ -1020,27 +1041,6 @@ var App=(function(){
     var n=parseFloat(String(document.getElementById('cfg_com').value).replace(',','.'))||0;
     if(n<0||n>100){ toast('Entre 0 e 100','err'); return; }
     Store.saveConfig({comissaoPadrao:n},function(){ toast('Comissão padrão salva','ok'); });
-  }
-  function dataCorteMs(){
-    var v=document.getElementById('lp_data').value; if(!v) return 0;
-    var p=v.split('-'); return new Date(+p[0],+p[1]-1,+p[2],0,0,0).getTime();
-  }
-  function previewLimpeza(){
-    var el=document.getElementById('lp_preview'); if(!el) return;
-    var ms=dataCorteMs();
-    if(!ms){ el.textContent='Escolha uma data.'; return; }
-    var c=Store.contarAntesDe(ms), d=new Date(ms);
-    el.innerHTML='Serão apagadas <b>'+c.vendas+' venda(s)</b> antes de '+
-      ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear()+'.'+
-      (c.semData? '<br><span style="color:var(--danger)">'+c.semData+' sem data não serão tocadas.</span>':'');
-  }
-  function limparHistorico(){
-    var ms=dataCorteMs(); if(!ms){ toast('Escolha a data','err'); return; }
-    var c=Store.contarAntesDe(ms);
-    if(c.vendas===0){ toast('Nada para apagar','ok'); return; }
-    if(!confirm('Apagar '+c.vendas+' venda(s)? Não pode ser desfeito.')) return;
-    if(!confirm('Confirma mesmo? Some para todos os celulares.')) return;
-    Store.apagarAntesDe(ms,function(n){ toast(n+' vendas apagadas','ok'); previewLimpeza(); refresh(); });
   }
 
   /* ---------- helpers ---------- */
@@ -1064,10 +1064,10 @@ var App=(function(){
     abrirCadastro:abrirCadastro,fecharCadastro:fecharCadastro,criarAcesso:criarAcesso,
     tab:tab,setPeriodo:setPeriodo,
     tecla:tecla,somar:somar,registrarVenda:registrarVenda,cancelar:cancelar,
-    setComissao:setComissao,editarProduto:editarProduto,zerarSenha:zerarSenha,removerUser:removerUser,
+    setComissao:setComissao,editarNome:editarNome,definirSenha:definirSenha,zerarSenha:zerarSenha,alternarAtivo:alternarAtivo,removerUser:removerUser,setDiaLanc:setDiaLanc,
     enviarResumo:enviarResumo,
     openSettings:openSettings,salvarMeuProduto:salvarMeuProduto,criarMaster:criarMaster,salvarComissao:salvarComissao,
-    previewLimpeza:previewLimpeza,limparHistorico:limparHistorico,closeSheet:closeSheet};
+    closeSheet:closeSheet};
 })();
 
 /* trava de zoom */
